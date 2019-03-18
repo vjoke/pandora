@@ -453,7 +453,8 @@ mod tests {
 	use super::*;
 	use futures::Stream;
 	use parity_codec::Encode;
-	use test_runtime::{Block, Extrinsic, Transfer, H256, AccountId};
+	use test_runtime::{Block, Extrinsic, Transfer, H256};
+	use substrate_primitives::{crypto::UncheckedFrom, ed25519::Public};
 	use assert_matches::assert_matches;
 	use crate::watcher;
 
@@ -502,7 +503,7 @@ mod tests {
 		fn hash_and_length(&self, uxt: &ExtrinsicFor<Self>) -> (Self::Hash, usize) {
 			let len = uxt.encode().len();
 			(
-				(H256::from(uxt.transfer().from.clone()).to_low_u64_be() << 5) + uxt.transfer().nonce,
+				(H256::from_slice(uxt.transfer().from.as_ref()).to_low_u64_be() << 5) + uxt.transfer().nonce,
 				len
 			)
 		}
@@ -524,8 +525,8 @@ mod tests {
 
 		// when
 		let hash = pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-			from: AccountId::from_h256(H256::from_low_u64_be(1)),
-			to: AccountId::from_h256(H256::from_low_u64_be(2)),
+			from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+			to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 			amount: 5,
 			nonce: 0,
 		})).unwrap();
@@ -539,8 +540,8 @@ mod tests {
 		// given
 		let pool = pool();
 		let uxt = uxt(Transfer {
-			from: AccountId::from_h256(H256::from_low_u64_be(1)),
-			to: AccountId::from_h256(H256::from_low_u64_be(2)),
+			from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+			to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 			amount: 5,
 			nonce: 0,
 		});
@@ -564,21 +565,21 @@ mod tests {
 
 			// when
 			let _hash = pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(1)),
-				to: AccountId::from_h256(H256::from_low_u64_be(2)),
+				from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 				amount: 5,
 				nonce: 0,
 			})).unwrap();
 			let _hash = pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(1)),
-				to: AccountId::from_h256(H256::from_low_u64_be(2)),
+				from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 				amount: 5,
 				nonce: 1,
 			})).unwrap();
 			// future doesn't count
 			let _hash = pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(1)),
-				to: AccountId::from_h256(H256::from_low_u64_be(2)),
+				from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 				amount: 5,
 				nonce: 3,
 			})).unwrap();
@@ -600,20 +601,20 @@ mod tests {
 		// given
 		let pool = pool();
 		let hash1 = pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-			from: AccountId::from_h256(H256::from_low_u64_be(1)),
-			to: AccountId::from_h256(H256::from_low_u64_be(2)),
+			from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+			to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 			amount: 5,
 			nonce: 0,
 		})).unwrap();
 		let hash2 = pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-			from: AccountId::from_h256(H256::from_low_u64_be(1)),
-			to: AccountId::from_h256(H256::from_low_u64_be(2)),
+			from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+			to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 			amount: 5,
 			nonce: 1,
 		})).unwrap();
 		let hash3 = pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-			from: AccountId::from_h256(H256::from_low_u64_be(1)),
-			to: AccountId::from_h256(H256::from_low_u64_be(2)),
+			from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+			to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 			amount: 5,
 			nonce: 3,
 		})).unwrap();
@@ -636,8 +637,8 @@ mod tests {
 		// given
 		let pool = pool();
 		let hash1 = pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-			from: AccountId::from_h256(H256::from_low_u64_be(1)),
-			to: AccountId::from_h256(H256::from_low_u64_be(2)),
+			from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+			to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 			amount: 5,
 			nonce: 0,
 		})).unwrap();
@@ -662,8 +663,8 @@ mod tests {
 		}, TestApi::default());
 
 		let hash1 = pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-			from: AccountId::from_h256(H256::from_low_u64_be(1)),
-			to: AccountId::from_h256(H256::from_low_u64_be(2)),
+			from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+			to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 			amount: 5,
 			nonce: 1,
 		})).unwrap();
@@ -671,8 +672,8 @@ mod tests {
 
 		// when
 		let hash2 = pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-			from: AccountId::from_h256(H256::from_low_u64_be(2)),
-			to: AccountId::from_h256(H256::from_low_u64_be(2)),
+			from: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
+			to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 			amount: 5,
 			nonce: 10,
 		})).unwrap();
@@ -697,8 +698,8 @@ mod tests {
 
 		// when
 		pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-			from: AccountId::from_h256(H256::from_low_u64_be(1)),
-			to: AccountId::from_h256(H256::from_low_u64_be(2)),
+			from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+			to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 			amount: 5,
 			nonce: 1,
 		})).unwrap_err();
@@ -717,8 +718,8 @@ mod tests {
 			// given
 			let pool = pool();
 			let watcher = pool.submit_and_watch(&BlockId::Number(0), uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(1)),
-				to: AccountId::from_h256(H256::from_low_u64_be(2)),
+				from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 				amount: 5,
 				nonce: 0,
 			})).unwrap();
@@ -742,8 +743,8 @@ mod tests {
 			// given
 			let pool = pool();
 			let watcher = pool.submit_and_watch(&BlockId::Number(0), uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(1)),
-				to: AccountId::from_h256(H256::from_low_u64_be(2)),
+				from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 				amount: 5,
 				nonce: 0,
 			})).unwrap();
@@ -767,8 +768,8 @@ mod tests {
 			// given
 			let pool = pool();
 			let watcher = pool.submit_and_watch(&BlockId::Number(0), uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(1)),
-				to: AccountId::from_h256(H256::from_low_u64_be(2)),
+				from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 				amount: 5,
 				nonce: 1,
 			})).unwrap();
@@ -777,8 +778,8 @@ mod tests {
 
 			// when
 			pool.submit_one(&BlockId::Number(0), uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(1)),
-				to: AccountId::from_h256(H256::from_low_u64_be(2)),
+				from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 				amount: 5,
 				nonce: 0,
 			})).unwrap();
@@ -795,8 +796,8 @@ mod tests {
 			// given
 			let pool = pool();
 			let uxt = uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(1)),
-				to: AccountId::from_h256(H256::from_low_u64_be(2)),
+				from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 				amount: 5,
 				nonce: 0,
 			});
@@ -819,8 +820,8 @@ mod tests {
 			// given
 			let pool = pool();
 			let uxt = uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(1)),
-				to: AccountId::from_h256(H256::from_low_u64_be(2)),
+				from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 				amount: 5,
 				nonce: 0,
 			});
@@ -853,8 +854,8 @@ mod tests {
 			}, TestApi::default());
 
 			let xt = uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(1)),
-				to: AccountId::from_h256(H256::from_low_u64_be(2)),
+				from: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
 				amount: 5,
 				nonce: 0,
 			});
@@ -863,8 +864,8 @@ mod tests {
 
 			// when
 			let xt = uxt(Transfer {
-				from: AccountId::from_h256(H256::from_low_u64_be(2)),
-				to: AccountId::from_h256(H256::from_low_u64_be(1)),
+				from: Public::unchecked_from(H256::from_low_u64_be(2)).into(),
+				to: Public::unchecked_from(H256::from_low_u64_be(1)).into(),
 				amount: 4,
 				nonce: 1,
 			});
