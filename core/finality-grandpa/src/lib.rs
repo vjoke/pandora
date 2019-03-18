@@ -98,7 +98,7 @@ pub use service_integration::{LinkHalfForService, BlockImportForService};
 pub use communication::{Network, NetworkBridge};
 
 use aux_schema::PersistentData;
-use environment::{Environment, HasVoted, SharedVoterSetState, VoterSetState};
+use environment::{CompletedRound, Environment, HasVoted, SharedVoterSetState, VoterSetState};
 pub use finality_proof::{prove_finality, check_finality_proof};
 use import::GrandpaBlockImport;
 use until_imported::UntilCommitBlocksImported;
@@ -513,7 +513,6 @@ pub fn run_grandpa<B, E, Block: BlockT<Hash=H256>, N, RA>(
 
 		let mut maybe_voter = match set_state.clone() {
 			VoterSetState::Live { last_completed_round, .. } => {
-				let (last_round_number, last_round_state) = last_completed_round;
 				let chain_info = match client.info() {
 					Ok(i) => i,
 					Err(e) => return future::Either::B(future::err(Error::Client(e))),
@@ -543,8 +542,8 @@ pub fn run_grandpa<B, E, Block: BlockT<Hash=H256>, N, RA>(
 					env.clone(),
 					voters,
 					global_comms,
-					last_round_number,
-					last_round_state,
+					last_completed_round.number,
+					last_completed_round.state,
 					last_finalized,
 				))
 			},
@@ -572,7 +571,13 @@ pub fn run_grandpa<B, E, Block: BlockT<Hash=H256>, N, RA>(
 					let genesis_state = RoundState::genesis((new.canon_hash, new.canon_number));
 
 					let set_state = VoterSetState::Live {
-						last_completed_round: (0, genesis_state), // always start at round 0 when changing sets.
+						// always start at round 0 when changing sets.
+						last_completed_round: CompletedRound {
+							number: 0,
+							state: genesis_state,
+							base: (new.canon_hash, new.canon_number),
+							votes: Vec::new(),
+						},
 						current_round: HasVoted::No,
 					};
 
