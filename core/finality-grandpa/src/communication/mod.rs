@@ -484,15 +484,21 @@ impl<Block: BlockT, N: Network<Block>> Sink for OutgoingMessages<Block, N>
 	type SinkItem = Message<Block>;
 	type SinkError = Error;
 
-	fn start_send(&mut self, msg: Message<Block>) -> StartSend<Message<Block>, Error> {
-		// only sign if we haven't voted in this round already.
-		let should_sign = match msg {
-			grandpa::Message::Prevote(_) => self.has_voted.can_prevote(),
-			grandpa::Message::Precommit(_) => self.has_voted.can_precommit(),
-		};
+	fn start_send(&mut self, mut msg: Message<Block>) -> StartSend<Message<Block>, Error> {
+		// if we've voted on this round previously under the same key, send that vote instead
+		match msg {
+			grandpa::Message::Prevote(_) =>
+				if let Some(prevote) = self.has_voted.prevote() {
+					msg = grandpa::Message::Prevote(prevote);
+				}
+			grandpa::Message::Precommit(_) =>
+				if let Some(precommit) = self.has_voted.precommit() {
+					msg = grandpa::Message::Precommit(precommit);
+				}
+		}
 
 		// when locals exist, sign messages on import
-		if let (true, &Some((ref pair, ref local_id))) = (should_sign, &self.locals) {
+		if let Some((ref pair, ref local_id)) = self.locals {
 			let encoded = localized_payload(self.round, self.set_id, &msg);
 			let signature = pair.sign(&encoded[..]);
 

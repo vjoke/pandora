@@ -49,30 +49,6 @@ use crate::until_imported::UntilVoteTargetImported;
 /// Data about a completed round.
 pub(crate) type CompletedRound<H, N> = (u64, RoundState<H, N>);
 
-/// A read-only view of the last completed round.
-pub(crate) struct LastCompletedRound<H, N> {
-	inner: RwLock<CompletedRound<H, N>>,
-}
-
-impl<H: Clone, N: Clone> LastCompletedRound<H, N> {
-	/// Create a new tracker based on some starting last-completed round.
-	pub(crate) fn new(round: CompletedRound<H, N>) -> Self {
-		LastCompletedRound { inner: RwLock::new(round) }
-	}
-
-	/// Read the last completed round.
-	pub(crate) fn read(&self) -> CompletedRound<H, N> {
-		self.inner.read().clone()
-	}
-
-	// NOTE: not exposed outside of this module intentionally.
-	fn with<F, R>(&self, f: F) -> R
-		where F: FnOnce(&mut CompletedRound<H, N>) -> R
-	{
-		f(&mut *self.inner.write())
-	}
-}
-
 #[derive(Debug, Clone, Decode, Encode, PartialEq)]
 pub enum VoterSetState<Block: BlockT> {
 	Live {
@@ -100,24 +76,28 @@ pub enum Vote<Block: BlockT> {
 
 impl<Block: BlockT> HasVoted<Block> {
 	#[allow(unused)]
-	pub fn can_propose(&self) -> bool {
-		match *self {
-			HasVoted::No => true,
-			HasVoted::Yes(_, _) => false,
+	pub fn proposal(&self) -> Option<()> {
+		match self {
+			HasVoted::Yes(_, Vote::Proposal) => Some(()),
+			_ => None,
 		}
 	}
 
-	pub fn can_prevote(&self) -> bool {
-		match *self {
-			HasVoted::No | HasVoted::Yes(_, Vote::Proposal) => true,
-			HasVoted::Yes(_, Vote::Prevote(_)) | HasVoted::Yes(_, Vote::Precommit(_, _)) => false,
+	pub fn prevote(&self) -> Option<Prevote<Block>> {
+		match self {
+			HasVoted::No | HasVoted::Yes(_, Vote::Proposal) =>
+				None,
+			HasVoted::Yes(_, Vote::Prevote(prevote)) | HasVoted::Yes(_, Vote::Precommit(prevote, _)) =>
+				Some(prevote.clone()),
 		}
 	}
 
-	pub fn can_precommit(&self) -> bool {
-		match *self {
-			HasVoted::No | HasVoted::Yes(_, Vote::Proposal) | HasVoted::Yes(_, Vote::Prevote(_)) => true,
-			HasVoted::Yes(_, Vote::Precommit(_, _)) => false,
+	pub fn precommit(&self) -> Option<Precommit<Block>> {
+		match self {
+			HasVoted::No | HasVoted::Yes(_, Vote::Proposal) | HasVoted::Yes(_, Vote::Prevote(_)) =>
+				None,
+			HasVoted::Yes(_, Vote::Precommit(_, precommit)) =>
+				Some(precommit.clone()),
 		}
 	}
 }
@@ -387,7 +367,7 @@ impl<B, E, Block: BlockT<Hash=H256>, N, RA> voter::Environment<Block::Hash, Numb
 		}
 	}
 
-	fn precommitted(&self, round: u64, precommit: Precommit<Block>) {
+	fn precommitted(&self, _round: u64, precommit: Precommit<Block>) {
 		let local_id = self.config.local_key.as_ref()
 			.map(|pair| pair.public().into())
 			.filter(|id| self.voters.contains_key(&id));
