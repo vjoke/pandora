@@ -106,6 +106,13 @@ impl From<Keyring> for sr_primitives::MultiSigner {
 	}
 }
 
+impl From<Keyring> for sr_primitives::AnySigner {
+	fn from(x: Keyring) -> Self {
+		use substrate_primitives::crypto::UncheckedFrom;
+		sr_primitives::AnySigner::unchecked_from(x)
+	}
+}
+
 lazy_static! {
 	static ref PRIVATE_KEYS: HashMap<Keyring, Pair> = {
 		Keyring::iter().map(|i| (i, i.pair())).collect()

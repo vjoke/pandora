@@ -256,12 +256,14 @@ impl<D, S: NetworkSpecialization<Block> + Clone> Peer<D, S> {
 			.send(ProtocolMsg::BlockImported(hash, header.clone()));
 	}
 
-	// SyncOracle: are we connected to any peer?
+	/// SyncOracle: are we connected to any peer?
+	#[cfg(test)]
 	fn is_offline(&self) -> bool {
 		self.is_offline.load(Ordering::Relaxed)
 	}
 
-	// SyncOracle: are we in the process of catching-up with the chain?
+	/// SyncOracle: are we in the process of catching-up with the chain?
+	#[cfg(test)]
 	fn is_major_syncing(&self) -> bool {
 		self.is_major_syncing.load(Ordering::Relaxed)
 	}
@@ -461,7 +463,7 @@ impl<D, S: NetworkSpecialization<Block> + Clone> Peer<D, S> {
 					amount: 1,
 					nonce,
 				};
-				builder.push(transfer.into_signed_tx());
+				builder.push(transfer.into_signed_tx()).unwrap();
 				nonce = nonce + 1;
 				builder.bake().unwrap()
 			})

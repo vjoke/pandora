@@ -437,11 +437,23 @@ impl AsRef<[u8]> for AnySigner {
 	}
 }
 
+impl From<AnySigner> for H256 {
+	fn from(x: AnySigner) -> Self {
+		x.0
+	}
+}
+
 impl Verify for AnySignature {
 	type Signer = AnySigner;
 	fn verify<L: Lazy<[u8]>>(&self, mut msg: L, signer: &AnySigner) -> bool {
 		runtime_io::sr25519_verify(self.0.as_fixed_bytes(), msg.get(), &signer.0.as_bytes()) ||
 			runtime_io::ed25519_verify(self.0.as_fixed_bytes(), msg.get(), &signer.0.as_bytes())
+	}
+}
+
+impl<T: Into<H512>> crypto::UncheckedFrom<T> for AnySignature {
+	fn unchecked_from(x: T) -> Self {
+		AnySignature(x.into())
 	}
 }
 
