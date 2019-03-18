@@ -33,6 +33,7 @@ use tokio::timer::Interval;
 
 use gossip::{GossipMessage, FullCommitMessage, VoteOrPrecommitMessage};
 use crate::{Error, Message, SignedMessage, Commit, CompactCommit};
+use crate::environment::HasVoted;
 
 pub(crate) use gossip::GossipValidator;
 
@@ -469,54 +470,13 @@ pub(crate) fn checked_message_stream<Block: BlockT, S>(
 		.map_err(|()| Error::Network(format!("Failed to receive message on unbounded stream")))
 }
 
-/// Whether we've voted already during a prior run of the program.
-#[derive(Decode, Encode)]
-pub(crate) enum HasVoted {
-	/// Has not voted already in this round.
-	#[codec(index = "0")]
-	No,
-	/// Has cast a proposal.
-	#[codec(index = "1")]
-	Proposed,
-	/// Has cast a prevote.
-	#[codec(index = "2")]
-	Prevoted,
-	/// Has cast a precommit (implies prevote.)
-	#[codec(index = "3")]
-	Precommitted,
-}
-
-impl HasVoted {
-	#[allow(unused)]
-	fn can_propose(&self) -> bool {
-		match *self {
-			HasVoted::No => true,
-			HasVoted::Proposed | HasVoted::Prevoted | HasVoted::Precommitted => false,
-		}
-	}
-
-	fn can_prevote(&self) -> bool {
-		match *self {
-			HasVoted::No | HasVoted::Proposed => true,
-			HasVoted::Prevoted | HasVoted::Precommitted => false,
-		}
-	}
-
-	fn can_precommit(&self) -> bool {
-		match *self {
-			HasVoted::No | HasVoted::Proposed | HasVoted::Prevoted => true,
-			HasVoted::Precommitted => false,
-		}
-	}
-}
-
 pub(crate) struct OutgoingMessages<Block: BlockT, N: Network<Block>> {
 	round: u64,
 	set_id: u64,
 	locals: Option<(Arc<ed25519::Pair>, Ed25519AuthorityId)>,
 	sender: mpsc::UnboundedSender<SignedMessage<Block>>,
 	network: N,
-	has_voted: HasVoted,
+	has_voted: HasVoted<Block>,
 }
 
 impl<Block: BlockT, N: Network<Block>> Sink for OutgoingMessages<Block, N>
@@ -535,7 +495,6 @@ impl<Block: BlockT, N: Network<Block>> Sink for OutgoingMessages<Block, N>
 		if let (true, &Some((ref pair, ref local_id))) = (should_sign, &self.locals) {
 			let encoded = localized_payload(self.round, self.set_id, &msg);
 			let signature = pair.sign(&encoded[..]);
-
 
 			let target_hash = msg.target().0.clone();
 			let signed = SignedMessage::<Block> {
@@ -587,7 +546,7 @@ pub(crate) fn outgoing_messages<Block: BlockT, N: Network<Block>>(
 	local_key: Option<Arc<ed25519::Pair>>,
 	voters: Arc<VoterSet<Ed25519AuthorityId>>,
 	network: N,
-	has_voted: HasVoted,
+	has_voted: HasVoted<Block>,
 ) -> (
 	impl Stream<Item=SignedMessage<Block>,Error=Error>,
 	OutgoingMessages<Block, N>,
