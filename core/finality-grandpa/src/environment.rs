@@ -341,54 +341,63 @@ impl<B, E, Block: BlockT<Hash=H256>, N, RA> voter::Environment<Block::Hash, Numb
 		}
 	}
 
-	// FIXME: should return Result<()>
-	fn prevoted(&self, _round: u64, prevote: Prevote<Block>) {
+	fn prevoted(&self, _round: u64, prevote: Prevote<Block>) -> Result<(), Self::Error> {
 		let local_id = self.config.local_key.as_ref()
 			.map(|pair| pair.public().into())
 			.filter(|id| self.voters.contains_key(&id));
 
-		if let Some(local_id) = local_id {
-			self.voter_set_state.with(|voter_set_state| {
-				// NOTE: when primary proposal is implemented in finality-grandpa the match for
-				// `current_round` below needs to be updated (we might be the primary proposer)
-				let last_completed_round = match voter_set_state {
-					VoterSetState::Live { last_completed_round, current_round: HasVoted::No } => last_completed_round,
-					_ => unreachable!("paused voters should not be voting; qed"),
-				};
+		let local_id = match local_id {
+			Some(id) => id,
+			None => return Ok(()),
+		};
 
-				let set_state = VoterSetState::<Block>::Live {
-					last_completed_round: last_completed_round.clone(),
-					current_round: HasVoted::Yes(local_id, Vote::Prevote(prevote)),
-				};
+		self.voter_set_state.with(|voter_set_state| {
+			// NOTE: when primary proposal is implemented in finality-grandpa the match for
+			// `current_round` below needs to be updated (we might be the primary proposer)
+			let last_completed_round = match voter_set_state {
+				VoterSetState::Live { last_completed_round, current_round: HasVoted::No } => last_completed_round,
+				_ => unreachable!("paused voters should not be voting; qed"),
+			};
 
-				crate::aux_schema::write_voter_set_state(&**self.inner.backend(), &set_state).unwrap();
-				*voter_set_state = set_state; // after writing to DB successfully.
-			})
-		}
+			let set_state = VoterSetState::<Block>::Live {
+				last_completed_round: last_completed_round.clone(),
+				current_round: HasVoted::Yes(local_id, Vote::Prevote(prevote)),
+			};
+
+			crate::aux_schema::write_voter_set_state(&**self.inner.backend(), &set_state)?;
+			*voter_set_state = set_state; // after writing to DB successfully.
+
+			Ok(())
+		})
 	}
 
-	fn precommitted(&self, _round: u64, precommit: Precommit<Block>) {
+	fn precommitted(&self, _round: u64, precommit: Precommit<Block>) -> Result<(), Self::Error> {
 		let local_id = self.config.local_key.as_ref()
 			.map(|pair| pair.public().into())
 			.filter(|id| self.voters.contains_key(&id));
 
-		if let Some(local_id) = local_id {
-			self.voter_set_state.with(|voter_set_state| {
-				let (last_completed_round, prevote) = match voter_set_state {
-					VoterSetState::Live { last_completed_round, current_round: HasVoted::Yes(_, Vote::Prevote(prevote)) } =>
-						(last_completed_round, prevote),
-					_ => unreachable!("paused voters should not be voting; qed"),
-				};
+		let local_id = match local_id {
+			Some(id) => id,
+			None => return Ok(()),
+		};
 
-				let set_state = VoterSetState::<Block>::Live {
-					last_completed_round: last_completed_round.clone(),
-					current_round: HasVoted::Yes(local_id, Vote::Precommit(prevote.clone(), precommit)),
-				};
+		self.voter_set_state.with(|voter_set_state| {
+			let (last_completed_round, prevote) = match voter_set_state {
+				VoterSetState::Live { last_completed_round, current_round: HasVoted::Yes(_, Vote::Prevote(prevote)) } =>
+					(last_completed_round, prevote),
+				_ => unreachable!("paused voters should not be voting; qed"),
+			};
 
-				crate::aux_schema::write_voter_set_state(&**self.inner.backend(), &set_state).unwrap();
-				*voter_set_state = set_state; // after writing to DB successfully.
-			})
-		}
+			let set_state = VoterSetState::<Block>::Live {
+				last_completed_round: last_completed_round.clone(),
+				current_round: HasVoted::Yes(local_id, Vote::Precommit(prevote.clone(), precommit)),
+			};
+
+			crate::aux_schema::write_voter_set_state(&**self.inner.backend(), &set_state)?;
+			*voter_set_state = set_state; // after writing to DB successfully.
+
+			Ok(())
+		})
 	}
 
 	fn completed(
