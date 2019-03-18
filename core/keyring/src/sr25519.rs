@@ -164,6 +164,12 @@ impl Deref for Keyring {
 	}
 }
 
+impl From<Keyring> for sr_primitives::MultiSigner {
+	fn from(x: Keyring) -> Self {
+		sr_primitives::MultiSigner::Sr25519(x.into())
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

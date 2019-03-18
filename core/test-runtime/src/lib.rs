@@ -36,10 +36,11 @@ use runtime_primitives::{
 		BlindCheckable, BlakeTwo256, Block as BlockT, Extrinsic as ExtrinsicT,
 		GetNodeBlockType, GetRuntimeBlockType,
 	},
+	MultiSigner, MultiSignature,
 };
 use runtime_version::RuntimeVersion;
 pub use primitives::hash::H256;
-use primitives::{ed25519, sr25519, OpaqueMetadata};
+use primitives::{ed25519, OpaqueMetadata};
 #[cfg(any(feature = "std", test))]
 use runtime_version::NativeVersion;
 use inherents::{CheckInherentsResult, InherentData};
@@ -82,8 +83,21 @@ impl Transfer {
 	/// Convert into a signed extrinsic.
 	#[cfg(feature = "std")]
 	pub fn into_signed_tx(self) -> Extrinsic {
-		let signature = keyring::AccountKeyring::from_public(&self.from)
-			.expect("Creates keyring from public key.").sign(&self.encode()).into();
+		let signature = match self.from {
+			MultiSigner::Sr25519(ref who) => {
+				keyring::AccountKeyring::from_public(who)
+					.expect("Creates keyring from public key.")
+					.sign(&self.encode())
+					.into()
+			},
+			MultiSigner::Ed25519(ref who) => {
+				keyring::AuthorityKeyring::from_public(who)
+					.expect("Creates keyring from public key.")
+					.sign(&self.encode())
+					.into()
+			},
+		};
+
 		Extrinsic::Transfer(self, signature)
 	}
 }
@@ -141,9 +155,9 @@ pub type AuthorityId = ed25519::Public;
 // The signature type used by authorities.
 pub type AuthoritySignature = ed25519::Signature;
 /// An identifier for an account on this system.
-pub type AccountId = sr25519::Public;
+pub type AccountId = MultiSigner;
 // The signature type used by accounts/transactions.
-pub type AccountSignature = sr25519::Signature;
+pub type AccountSignature = MultiSignature;
 /// A simple hash type for all our hashing.
 pub type Hash = H256;
 /// The block number type used in this runtime.

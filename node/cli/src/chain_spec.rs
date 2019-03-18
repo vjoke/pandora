@@ -190,6 +190,7 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
 	sr25519::Pair::from_string(&format!("//{}", seed), None)
 		.expect("static values are valid; qed")
 		.public()
+		.unchecked_into()
 }
 
 /// Helper function to generate AuthorityId from seed

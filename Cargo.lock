@@ -3908,6 +3908,7 @@ version = "0.1.0"
 dependencies = [
  "hex-literal 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sr-primitives 0.1.0",
  "substrate-primitives 0.1.0",
 ]
 

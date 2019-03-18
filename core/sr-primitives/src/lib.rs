@@ -30,7 +30,7 @@ pub use serde_derive;
 pub use runtime_io::{StorageOverlay, ChildrenStorageOverlay};
 
 use rstd::prelude::*;
-use substrate_primitives::{ed25519, sr25519, hash::{H256, H512}};
+use substrate_primitives::{crypto, ed25519, sr25519, hash::{H256, H512}};
 use codec::{Encode, Decode};
 
 #[cfg(feature = "std")]
@@ -341,6 +341,19 @@ pub enum MultiSignature {
 	Sr25519(sr25519::Signature),
 }
 
+
+impl From<ed25519::Signature> for MultiSignature {
+	fn from(x: ed25519::Signature) -> Self {
+		MultiSignature::Ed25519(x)
+	}
+}
+
+impl From<sr25519::Signature> for MultiSignature {
+	fn from(x: sr25519::Signature) -> Self {
+		MultiSignature::Sr25519(x)
+	}
+}
+
 impl Default for MultiSignature {
 	fn default() -> Self {
 		MultiSignature::Ed25519(Default::default())
@@ -360,6 +373,27 @@ pub enum MultiSigner {
 impl Default for MultiSigner {
 	fn default() -> Self {
 		MultiSigner::Ed25519(Default::default())
+	}
+}
+
+impl AsRef<[u8]> for MultiSigner {
+	fn as_ref(&self) -> &[u8] {
+		match *self {
+			MultiSigner::Ed25519(ref who) => who.as_ref(),
+			MultiSigner::Sr25519(ref who) => who.as_ref(),
+		}
+	}
+}
+
+impl From<ed25519::Public> for MultiSigner {
+	fn from(x: ed25519::Public) -> Self {
+		MultiSigner::Ed25519(x)
+	}
+}
+
+impl From<sr25519::Public> for MultiSigner {
+	fn from(x: sr25519::Public) -> Self {
+		MultiSigner::Sr25519(x)
 	}
 }
 
@@ -383,6 +417,25 @@ pub struct AnySignature(H512);
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Default, Encode, Decode)]
 #[cfg_attr(feature = "std", derive(Debug, Serialize, Deserialize))]
 pub struct AnySigner(H256);
+
+impl<T: Into<H256>> crypto::UncheckedFrom<T> for AnySigner {
+	fn unchecked_from(x: T) -> Self {
+		AnySigner(x.into())
+	}
+}
+
+#[cfg(feature = "std")]
+impl std::fmt::Display for AnySigner {
+	fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+		self.0.fmt(fmt)
+	}
+}
+
+impl AsRef<[u8]> for AnySigner {
+	fn as_ref(&self) -> &[u8] {
+		self.0.as_ref()
+	}
+}
 
 impl Verify for AnySignature {
 	type Signer = AnySigner;
@@ -819,3 +872,4 @@ mod tests {
 		assert_eq!(super::Permill::from_percent(100) * std::u64::MAX, std::u64::MAX/1_000_000);
 	}
 }
+
