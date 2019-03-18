@@ -41,7 +41,6 @@ use futures::Future;
 use futures::sync::{mpsc, oneshot};
 use crate::message::{Message, ConsensusEngineId};
 use network_libp2p::{NodeIndex, ProtocolId, PeerId};
-use parity_codec::Encode;
 use parking_lot::{Mutex, RwLock};
 use primitives::{H256, ed25519::Public as AuthorityId};
 use crate::protocol::{ConnectedPeer, Context, FromNetworkMsg, Protocol, ProtocolMsg};
@@ -462,8 +461,7 @@ impl<D, S: NetworkSpecialization<Block> + Clone> Peer<D, S> {
 					amount: 1,
 					nonce,
 				};
-				let signature = AccountKeyring::from_public(&transfer.from).unwrap().sign(&transfer.encode()).into();
-				builder.push(Extrinsic::Transfer(transfer, signature)).unwrap();
+				builder.push(transfer.into_signed_tx());
 				nonce = nonce + 1;
 				builder.bake().unwrap()
 			})
