@@ -137,7 +137,7 @@ impl<B: BlockT> ChainSync<B> {
 		import_queue: Box<ImportQueue<B>>
 	) -> Self {
 		let mut required_block_attributes = message::BlockAttributes::HEADER | message::BlockAttributes::JUSTIFICATION;
-		if role.intersects(Roles::FULL | Roles::AUTHORITY) {
+		if role.is_full() {
 			required_block_attributes |= message::BlockAttributes::BODY;
 		}
 
@@ -190,6 +190,12 @@ impl<B: BlockT> ChainSync<B> {
 		let previous_state = self.state(&previous_best_seen);
 
 		if let Some(info) = protocol.peer_info(who) {
+			// there's nothing sync can get from the node that has no blockchain data
+			// (the opposite is not true, but all requests are served at protocol level)
+			if !info.roles.is_full() {
+				return;
+			}
+
 			let status = block_status(&*protocol.client(), &self.queue_blocks, info.best_hash);
 			match (status, info.best_number) {
 				(Err(e), _) => {

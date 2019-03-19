@@ -575,6 +575,16 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 			request.from,
 			request.to,
 			request.max);
+
+		// sending block requests to the node that is unable to serve it is considered a bad behavior
+		if !self.config.roles.is_full() {
+			self.network_chan.send(NetworkMsg::ReportPeer(
+				peer,
+				Severity::Bad("Peer is trying to sync from the light node".into()),
+			));
+			return;
+		}
+
 		let mut blocks = Vec::new();
 		let mut id = match request.from {
 			message::FromBlock::Hash(h) => BlockId::Hash(h),
@@ -727,7 +737,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 				));
 				return;
 			}
-			if self.config.roles & Roles::LIGHT == Roles::LIGHT {
+			if self.config.roles.is_light() {
 				let self_best_block = self
 					.context_data
 					.chain
@@ -934,7 +944,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 		);
 
 		// blocks are not announced by light clients
-		if self.config.roles & Roles::LIGHT == Roles::LIGHT {
+		if self.config.roles.is_light() {
 			return;
 		}
 

@@ -43,13 +43,13 @@ use consensus::{BlockOrigin, ForkChoiceStrategy, ImportBlock, JustificationImpor
 use crate::consensus_gossip::ConsensusGossip;
 use crossbeam_channel::{self as channel, Sender, select};
 use futures::Future;
-use futures::sync::{mpsc, oneshot};
+use futures::{sync::{mpsc, oneshot}, stream::Stream};
 use crate::message::{Message, ConsensusEngineId};
 use network_libp2p::{NodeIndex, ProtocolId, PeerId};
 use parity_codec::Encode;
 use parking_lot::{Mutex, RwLock};
 use primitives::{H256, ed25519::Public as AuthorityId, Blake2Hasher};
-use crate::protocol::{ConnectedPeer, Context, FromNetworkMsg, Protocol, ProtocolMsg};
+use crate::protocol::{ConnectedPeer, Context, FromNetworkMsg, Protocol, ProtocolMsg, ProtocolStatus};
 use runtime_primitives::generic::BlockId;
 use runtime_primitives::traits::{AuthorityIdFor, Block as BlockT, Digest, DigestItem, Header, NumberFor};
 use runtime_primitives::Justification;
@@ -279,6 +279,7 @@ impl<S: NetworkSpecialization<Block> + Clone> Link<Block> for TestLink<S> {
 pub struct Peer<D, S: NetworkSpecialization<Block> + Clone> {
 	pub is_offline: Arc<AtomicBool>,
 	pub is_major_syncing: Arc<AtomicBool>,
+	status_sinks: Arc<Mutex<Vec<mpsc::UnboundedSender<ProtocolStatus<Block>>>>>,
 	pub peers: Arc<RwLock<HashMap<NodeIndex, ConnectedPeer<Block>>>>,
 	client: PeersClient,
 	network_to_protocol_sender: Sender<FromNetworkMsg<Block>>,
@@ -295,6 +296,7 @@ impl<D, S: NetworkSpecialization<Block> + Clone> Peer<D, S> {
 	fn new(
 		is_offline: Arc<AtomicBool>,
 		is_major_syncing: Arc<AtomicBool>,
+		status_sinks: Arc<Mutex<Vec<mpsc::UnboundedSender<ProtocolStatus<Block>>>>>,
 		peers: Arc<RwLock<HashMap<NodeIndex, ConnectedPeer<Block>>>>,
 		client: PeersClient,
 		import_queue: Box<ImportQueue<Block>>,
@@ -310,6 +312,7 @@ impl<D, S: NetworkSpecialization<Block> + Clone> Peer<D, S> {
 		Peer {
 			is_offline,
 			is_major_syncing,
+			status_sinks,
 			peers,
 			client,
 			network_to_protocol_sender,
@@ -356,6 +359,14 @@ impl<D, S: NetworkSpecialization<Block> + Clone> Peer<D, S> {
 		self.is_major_syncing.load(Ordering::Relaxed)
 	}
 
+	/// Get protocol status.
+	pub fn protocol_status(&self) -> ProtocolStatus<Block> {
+		let (sink, stream) = mpsc::unbounded();
+		self.status_sinks.lock().push(sink);
+		self.protocol_sender.send(ProtocolMsg::Status).unwrap();
+		stream.wait().next().unwrap().unwrap()
+	}
+
 	/// Called on connection to other indicated peer.
 	pub fn on_connect(&self, other: NodeIndex) {
 		let _ = self.network_to_protocol_sender.send(FromNetworkMsg::PeerConnected(PeerId::random(), other, String::new()));
@@ -368,7 +379,7 @@ impl<D, S: NetworkSpecialization<Block> + Clone> Peer<D, S> {
 			.send(FromNetworkMsg::PeerDisconnected(other, String::new()));
 	}
 
-	/// Receive a message from another peer. Return a set of peers to disconnect.
+	/// Receive a message from another peer.
 	fn receive_message(&self, from: NodeIndex, msg: Message<Block>) {
 		let _ = self
 			.network_to_protocol_sender
@@ -672,7 +683,7 @@ pub trait TestNetFactory: Sized {
 		let peers: Arc<RwLock<HashMap<NodeIndex, ConnectedPeer<Block>>>> = Arc::new(Default::default());
 
 		let (protocol_sender, network_to_protocol_sender) = Protocol::new(
-			status_sinks,
+			status_sinks.clone(),
 			is_offline.clone(),
 			is_major_syncing.clone(),
 			peers.clone(),
@@ -689,6 +700,7 @@ pub trait TestNetFactory: Sized {
 		let peer = Arc::new(Peer::new(
 			is_offline,
 			is_major_syncing,
+			status_sinks,
 			peers,
 			PeersClient::Full(client),
 			import_queue,
@@ -730,7 +742,7 @@ pub trait TestNetFactory: Sized {
 		let peers: Arc<RwLock<HashMap<NodeIndex, ConnectedPeer<Block>>>> = Arc::new(Default::default());
 
 		let (protocol_sender, network_to_protocol_sender) = Protocol::new(
-			status_sinks,
+			status_sinks.clone(),
 			is_offline.clone(),
 			is_major_syncing.clone(),
 			peers.clone(),
@@ -747,6 +759,7 @@ pub trait TestNetFactory: Sized {
 		let peer = Arc::new(Peer::new(
 			is_offline,
 			is_major_syncing,
+			status_sinks,
 			peers,
 			PeersClient::Light(client),
 			import_queue,
