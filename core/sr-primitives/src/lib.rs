@@ -444,16 +444,10 @@ impl From<AnySigner> for H256 {
 }
 
 impl Verify for AnySignature {
-	type Signer = sr25519::Public;
-	fn verify<L: Lazy<[u8]>>(&self, mut msg: L, signer: &sr25519::Public) -> bool {
+	type Signer = AnySigner;
+	fn verify<L: Lazy<[u8]>>(&self, mut msg: L, signer: &Self::Signer) -> bool {
 		runtime_io::sr25519_verify(self.0.as_fixed_bytes(), msg.get(), &signer.0) ||
 			runtime_io::ed25519_verify(self.0.as_fixed_bytes(), msg.get(), &signer.0)
-	}
-}
-
-impl From<sr25519::Signature> for AnySignature {
-	fn from(s: sr25519::Signature) -> AnySignature {
-		AnySignature(s.0.into())
 	}
 }
 
