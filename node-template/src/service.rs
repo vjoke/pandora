@@ -19,7 +19,6 @@ use inherents::InherentDataProviders;
 use network::construct_simple_protocol;
 use substrate_executor::native_executor_instance;
 use substrate_service::construct_service_factory;
-use substrate_client::{backend::Backend, blockchain::Backend as _};
 
 pub use substrate_executor::NativeExecutor;
 // Our native executor instance.
@@ -69,7 +68,6 @@ construct_service_factory! {
 						SlotDuration::get_or_compute(&*client)?,
 						key.clone(),
 						client.clone(),
-						client.backend().blockchain().cache(),
 						client,
 						proposer,
 						service.network(),
@@ -87,13 +85,11 @@ construct_service_factory! {
 			Self::Block,
 		>
 			{ |config: &mut FactoryFullConfiguration<Self> , client: Arc<FullClient<Self>>| {
-				let cache = client.backend().blockchain().cache();
 				import_queue::<_, _, _, Pair>(
 						SlotDuration::get_or_compute(&*client)?,
 						client.clone(),
 						None,
 						client,
-						cache,
 						NothingExtra,
 						config.custom.inherent_data_providers.clone(),
 					).map_err(Into::into)
@@ -103,13 +99,11 @@ construct_service_factory! {
 			Self::Block,
 		>
 			{ |config: &mut FactoryFullConfiguration<Self>, client: Arc<LightClient<Self>>| {
-				let cache = client.backend().blockchain().cache();
 				import_queue::<_, _, _, Pair>(
 						SlotDuration::get_or_compute(&*client)?,
 						client.clone(),
 						None,
 						client,
-						cache,
 						NothingExtra,
 						config.custom.inherent_data_providers.clone(),
 					).map_err(Into::into)
