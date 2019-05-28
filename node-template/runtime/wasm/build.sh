@@ -6,6 +6,10 @@ if cargo --version | grep -q "nightly"; then
 else
 	CARGO_CMD="cargo +nightly"
 fi
+
+# force to use nightly version
+CARGO_CMD="cargo +nightly"
+
 CARGO_INCREMENTAL=0 RUSTFLAGS="-C link-arg=--export-table" $CARGO_CMD build --target=wasm32-unknown-unknown --release
 for i in node_template_runtime_wasm
 do
