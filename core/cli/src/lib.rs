@@ -24,6 +24,7 @@ mod traits;
 mod params;
 pub mod error;
 pub mod informant;
+pub mod x_service;
 
 use client::ExecutionStrategies;
 use service::{

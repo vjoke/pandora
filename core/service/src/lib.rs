@@ -24,6 +24,7 @@ mod chain_spec;
 pub mod config;
 pub mod chain_ops;
 pub mod error;
+pub mod x_service;
 
 use std::io;
 use std::net::SocketAddr;
