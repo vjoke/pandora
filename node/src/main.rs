@@ -54,7 +54,7 @@ fn main() {
 		support_url: "https://github.com/paritytech/substrate/issues/new",
 	};
 
-	if let Err(e) = cli::run_x(::std::env::args(), Exit, version) {
+	if let Err(e) = cli::run(::std::env::args(), Exit, version) {
 		eprintln!("Error starting the node: {}\n\n{:?}", e, e);
 		std::process::exit(1)
 	}

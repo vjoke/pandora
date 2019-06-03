@@ -29,6 +29,7 @@ mod listener;
 mod pool;
 mod ready;
 mod rotator;
+mod x_service;
 
 pub mod base_pool;
 pub mod error;

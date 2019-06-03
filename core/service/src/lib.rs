@@ -43,6 +43,7 @@ use runtime_primitives::generic::BlockId;
 use runtime_primitives::traits::{Header, SaturatedConversion};
 use substrate_executor::NativeExecutor;
 use tel::{telemetry, SUBSTRATE_INFO};
+use actix::{Arbiter};
 
 pub use self::error::Error;
 pub use config::{Configuration, Roles, PruningMode};
@@ -205,7 +206,7 @@ impl<Components: components::Components> Service<Components> {
 		let network_mut = network::NetworkWorker::new(network_params)?;
 		let network = network_mut.service().clone();
 
-		task_executor.spawn(network_mut
+		Arbiter::spawn(network_mut
 			.map_err(|_| ())
 			.select(exit.clone())
 			.then(|_| Ok(())));
@@ -254,7 +255,7 @@ impl<Components: components::Components> Service<Components> {
 				})
 				.select(exit.clone())
 				.then(|_| Ok(()));
-			task_executor.spawn(events);
+			Arbiter::spawn(events);
 		}
 
 		{
@@ -300,7 +301,7 @@ impl<Components: components::Components> Service<Components> {
 				.select(exit.clone())
 				.then(|_| Ok(()));
 
-			task_executor.spawn(events);
+			Arbiter::spawn(events);
 		}
 
 		{
@@ -316,7 +317,7 @@ impl<Components: components::Components> Service<Components> {
 				.select(exit.clone())
 				.then(|_| Ok(()));
 
-			task_executor.spawn(events);
+			Arbiter::spawn(events);
 		}
 
 
