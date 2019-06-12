@@ -112,7 +112,7 @@ pub struct Pool<B: ChainApi> {
 	>>,
 	import_notification_sinks: Mutex<Vec<mpsc::UnboundedSender<()>>>,
 	rotator: PoolRotator<ExHash<B>>,
-	stub: PoolStubAddr,
+	// stub: PoolStubAddr,
 }
 
 impl<B: ChainApi> Pool<B> {
@@ -162,7 +162,7 @@ impl<B: ChainApi> Pool<B> {
 					self.import_notification_sinks.lock().retain(|sink| sink.unbounded_send(()).is_ok());
 					// send to subscribers
 					// TODO: remove logic related import_notification_sinks 
-					self.stub.do_send(Publish("tx imported".to_string()));
+					// self.stub.do_send(Publish("tx imported".to_string()));
 				}
 
 				let mut listener = self.listener.write();
@@ -378,14 +378,14 @@ impl<B: ChainApi> Pool<B> {
 			pool: Default::default(),
 			import_notification_sinks: Default::default(),
 			rotator: Default::default(),
-			stub: PoolStub::default().start(),
+			// stub: PoolStub::default().start(),
 		}
 	}
 
 	/// Return addresss of actor PoolStub
-	pub fn address(&self) -> PoolStubAddr {
-		self.stub.clone()
-	}
+	// pub fn address(&self) -> PoolStubAddr {
+	// 	self.stub.clone()
+	// }
 
 	/// Return an event stream of transactions imported to the pool.
 	pub fn import_notification_stream(&self) -> EventStream {
@@ -395,11 +395,9 @@ impl<B: ChainApi> Pool<B> {
 	}
 
 	/// Subscribe to the tx import event
-	pub fn subscribe(&self, recipient: Recipient<PoolMessage>) {
-		self.stub.do_send(Subscribe(recipient));
-	}
-
-	
+	// pub fn subscribe(&self, recipient: Recipient<PoolMessage>) {
+	// 	self.stub.do_send(Subscribe(recipient));
+	// }
 
 	/// Invoked when extrinsics are broadcasted.
 	pub fn on_broadcasted(&self, propagated: HashMap<ExHash<B>, Vec<String>>) {

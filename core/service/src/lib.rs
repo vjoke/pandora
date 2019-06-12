@@ -206,7 +206,7 @@ impl<Components: components::Components> Service<Components> {
 		let network_mut = network::NetworkWorker::new(network_params)?;
 		let network = network_mut.service().clone();
 
-		Arbiter::spawn(network_mut
+		task_executor.spawn(network_mut
 			.map_err(|_| ())
 			.select(exit.clone())
 			.then(|_| Ok(())));
@@ -255,7 +255,7 @@ impl<Components: components::Components> Service<Components> {
 				})
 				.select(exit.clone())
 				.then(|_| Ok(()));
-			Arbiter::spawn(events);
+			task_executor.spawn(events);
 		}
 
 		{
@@ -301,7 +301,7 @@ impl<Components: components::Components> Service<Components> {
 				.select(exit.clone())
 				.then(|_| Ok(()));
 
-			Arbiter::spawn(events);
+			task_executor.spawn(events);
 		}
 
 		{
@@ -317,7 +317,7 @@ impl<Components: components::Components> Service<Components> {
 				.select(exit.clone())
 				.then(|_| Ok(()));
 
-			Arbiter::spawn(events);
+			task_executor.spawn(events);
 		}
 
 

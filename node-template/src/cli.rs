@@ -26,6 +26,7 @@ pub fn run<I, T, E>(args: I, exit: E, version: VersionInfo) -> error::Result<()>
 			info!("Roles: {:?}", config.roles);
 			let runtime = Runtime::new().map_err(|e| format!("{:?}", e))?;
 			let executor = runtime.executor();
+			let _system = System::new();
 			match config.roles {
 				ServiceRoles::LIGHT => run_until_exit(
 					runtime,

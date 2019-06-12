@@ -12,7 +12,6 @@ struct ClientMessage(u64);
 struct NetworkMessage(u32);
 
 struct Informant {
-
 }
 
 impl Actor for Informant {

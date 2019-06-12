@@ -217,6 +217,9 @@ fn run_until_exit<T, C, E>(
 	let informant = cli::informant::build(&service);
 	runtime.executor().spawn(exit.until(informant).map(|_| ()));
 
+	// runtime.executor().spawn(run_actix());
+	// println!("ray: continue to run");
+
 	let _ = runtime.block_on(e.into_exit());
 	exit_send.fire();
 
@@ -229,6 +232,14 @@ fn run_until_exit<T, C, E>(
 	let _ = runtime.shutdown_on_idle().wait();
 
 	Ok(())
+}
+
+use futures::future::ok;
+fn run_actix() -> impl Future<Item = (), Error = ()> {
+	actix::System::run(||{
+		println!("ray: actors running");
+	});
+	ok(())
 }
 
 
