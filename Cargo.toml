@@ -106,6 +106,7 @@ members = [
 	"node/runtime",
 	"node/testing",
 	"node-template",
+	"pandora",
 	"subkey",
 	"test-utils/chain-spec-builder",
 ]
