@@ -33,7 +33,8 @@ pub use sr_primitives::BuildStorage;
 pub use timestamp::Call as TimestampCall;
 pub use balances::Call as BalancesCall;
 pub use sr_primitives::{Permill, Perbill};
-pub use support::{StorageValue, construct_runtime, parameter_types};
+pub use support::{StorageValue, construct_runtime, parameter_types,
+};
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -146,6 +147,19 @@ parameter_types! {
 	pub const Version: RuntimeVersion = VERSION;
 }
 
+parameter_types! {
+	pub const ExpirationValue: u32 = 12 * 3600; // 12 hours
+	pub const MinUnitPrice: Balance = 0; // FIXME: 
+	pub const MaxUnitPrice: Balance = 3500000000; // FIXME: 
+	pub const BoxRatio: u32 = 35;
+	pub const ReserveRatio: u32 = 35;
+	pub const PoolRatio: u32 = 10;
+	pub const LastPlayerRatio: u32 = 5;
+	pub const TeamRatio: u32 = 5;
+	pub const OperatorRatio: u32 = 5;
+	pub const InvitorRatio: u32 = 5;
+}
+
 impl system::Trait for Runtime {
 	/// The identifier used to distinguish between accounts.
 	type AccountId = AccountId;
@@ -253,6 +267,17 @@ impl sudo::Trait for Runtime {
 /// Used for the module pandora in `./pandora.rs`
 impl pandora::Trait for Runtime {
 	type Event = Event;
+	type Expiration = ExpirationValue;
+	type MinUnitPrice = MinUnitPrice;
+	type MaxUnitPrice = MaxUnitPrice;
+	type BoxRatio = BoxRatio;
+	type ReserveRatio = ReserveRatio;
+	type PoolRatio = PoolRatio;
+	type LastPlayerRatio = LastPlayerRatio;
+	type TeamRatio = TeamRatio;
+	type OperatorRatio = OperatorRatio;
+	type InvitorRatio = InvitorRatio;
+	type Currency = Balances;
 }
 
 construct_runtime!(
@@ -268,7 +293,7 @@ construct_runtime!(
 		Indices: indices::{default, Config<T>},
 		Balances: balances::{default, Error},
 		Sudo: sudo,
-		PandoraModule: pandora::{Module, Call, Storage, Event<T>},
+		Pandora: pandora::{Module, Call, Storage, Event<T>, Config<T>},
 	}
 );
 
@@ -403,4 +428,15 @@ impl_runtime_apis! {
 			opaque::SessionKeys::generate(seed)
 		}
 	}
+}
+/// tests for this module
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn have_a_test() {
+
+	}
+
 }

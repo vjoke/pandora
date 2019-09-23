@@ -1,7 +1,7 @@
 use primitives::{Pair, Public};
 use pandora_runtime::{
 	AccountId, BabeConfig, BalancesConfig, GenesisConfig, GrandpaConfig,
-	SudoConfig, IndicesConfig, SystemConfig, WASM_BINARY, 
+	SudoConfig, IndicesConfig, SystemConfig, WASM_BINARY, PandoraConfig
 };
 use babe_primitives::{AuthorityId as BabeId};
 use grandpa_primitives::{AuthorityId as GrandpaId};
@@ -131,5 +131,14 @@ fn testnet_genesis(initial_authorities: Vec<(AccountId, AccountId, GrandpaId, Ba
 		grandpa: Some(GrandpaConfig {
 			authorities: initial_authorities.iter().map(|x| (x.2.clone(), 1)).collect(),
 		}),
+		pandora: Some(PandoraConfig {
+			admin_account: get_from_seed::<AccountId>("Alice"), 
+			cashier_account: get_from_seed::<AccountId>("Alice//Cashier"), 
+			reserve_account: get_from_seed::<AccountId>("Alice//Reserve"), 
+			pool_account: get_from_seed::<AccountId>("Alice//Pool"), 
+			last_player_account: get_from_seed::<AccountId>("Alice//LastPlayer"), 
+			team_account: get_from_seed::<AccountId>("Alice//Team"), 
+			operator_account: get_from_seed::<AccountId>("Alice//Operator"), 
+		})
 	}
 }
