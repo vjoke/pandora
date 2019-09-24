@@ -9,12 +9,18 @@
 /// https://github.com/paritytech/substrate/blob/master/srml/example/src/lib.rs
 
 use support::{decl_module, decl_storage, decl_event, StorageValue, StorageMap, dispatch::Result,
-	traits::{Get, Currency, ReservableCurrency}, ensure
+	traits::{Get, Currency, ReservableCurrency, Imbalance}, ensure
 };
+
+// use sr_primitives::traits::{
+// 	Convert, Zero, One, StaticLookup, CheckedSub, Saturating, Bounded, SimpleArithmetic,
+// 	SaturatedConversion,
+// };
+
 use system::ensure_signed;
 use codec::{Encode, Decode};
-use sr_primitives::traits::{Hash, Zero};
-
+use sr_primitives::traits::{Hash, Zero, Saturating, CheckedMul};
+use rstd::prelude::*;
 
 #[derive(Encode, Decode, Clone, Debug, PartialEq)]
 pub enum Status {
@@ -73,11 +79,13 @@ pub trait Trait: balances::Trait {
 	
 	/// Define ratios for different parts
 	type BoxRatio: Get<u32>;
+
 	type ReserveRatio: Get<u32>;
 	type PoolRatio: Get<u32>;
 	type LastPlayerRatio: Get<u32>;
 	type TeamRatio: Get<u32>;
 	type OperatorRatio: Get<u32>;
+
 	type InvitorRatio: Get<u32>;
 
 	type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
@@ -105,6 +113,8 @@ decl_storage! {
 		LastPlayerAccount get(last_player_account) config(): T::AccountId;
 		TeamAccount get(team_account) config(): T::AccountId;
 		OperatorAccount get(operator_account) config(): T::AccountId;
+		// Ledger is used to keep balance of each account
+		Ledger get(balance): map T::AccountId => BalanceOf<T>;
 		
 		GameStatus get(game_status): Status;
 
@@ -164,6 +174,7 @@ decl_module! {
 			Ok(())
 		}
 
+		/// Initialize the game with price
 		pub fn init(origin, dbox_unit_price: BalanceOf<T>) -> Result {
 			// Check signature
 			let sender = ensure_signed(origin)?;
@@ -173,24 +184,46 @@ decl_module! {
 			// FIXME: Check unit price
 			ensure!(dbox_unit_price > T::MinUnitPrice::get(), "Unit price is too low");
 			ensure!(dbox_unit_price < T::MaxUnitPrice::get(), "Unit price is too high");
-			
+
+			// Init each account of ledger
+			let accounts: Vec<T::AccountId> = vec![Self::admin_account(), Self::cashier_account(), Self::reserve_account(),
+				Self::pool_account(), Self::last_player_account(), Self::team_account(), Self::operator_account()];
+
+			for account in accounts.iter() {
+				let balance = <BalanceOf<T>>::zero();
+				// let balance = <PositiveImbalanceOf<T>>::zero();
+				<Ledger<T>>::insert(account, balance);
+			}
+
 			GameStatus::put(Status::Inited);
 			<DboxUnitPrice<T>>::put(dbox_unit_price);
-
+			// TODO: emit game event
 			Ok(())
 			
+		}
+
+		/// Set the new status for the game
+		pub fn set_status(origin, new_status: Status) -> Result {
+			let sender = ensure_signed(origin)?;
+			ensure!(sender == Self::admin_account(), "Not authorized");
+			ensure!(new_status != GameStatus::get(), "New status should be different from current status");
+
+			GameStatus::put(new_status);
+			// TODO: emit game event
+			Ok(())
 		}
 
 		// Create a dbox
 		pub fn create_dbox(origin) -> Result {
 			let sender = ensure_signed(origin)?;
+			let _ = Self::check_ready()?;
 			// Check if the balance is enough to create a dbox
 			// TODO: Check if sender is specific accounts
 			let nonce = Nonce::get();
 			let random_hash = (<system::Module<T>>::random_seed(), &sender, nonce)
 				.using_encoded(<T as system::Trait>::Hashing::hash);
 
-			let mut new_dbox = Dbox {
+			let new_dbox = Dbox {
 				id: random_hash,
 				value: Zero::zero(),
 				version: 0,
@@ -201,8 +234,11 @@ decl_module! {
 			// Check if we can insert dbox without error
 			let _ = T::Currency::transfer(&sender, &Self::cashier_account(), Self::dbox_unit_price())?;
 			Self::insert(sender, random_hash, new_dbox);
-
 			Nonce::mutate(|n| *n += 1);
+
+			Self::split_money_of_one_dbox();
+			// TODO: cashier_account?
+			
 
 			Ok(())
 		}
@@ -210,6 +246,11 @@ decl_module! {
 }
 
 impl <T: Trait> Module<T> {
+	fn check_ready() -> Result {
+		ensure!(GameStatus::get() == Status::Running, "Not ready");
+		Ok(())
+	}
+
 	fn check_insert(from: &T::AccountId, dbox_id: &T::Hash, new_dbox: &Dbox<T::Hash, T::Balance>) -> Result {
 		ensure!(!<DboxOwner<T>>::exists(dbox_id), "Dbox already exists");
 
@@ -250,6 +291,29 @@ impl <T: Trait> Module<T> {
 
 		Ok(())
 	}
+
+	fn split_money_of_one_dbox() {
+		// Split incoming money
+		// TODO: Create record for all active dboxes
+
+		// Give to other game acounts
+		let money = Self::dbox_unit_price() / 100.into();
+		let targets: Vec<(T::AccountId, u32)> = vec![
+			(Self::reserve_account(), T::ReserveRatio::get()),
+			(Self::pool_account(), T::PoolRatio::get()),
+			(Self::last_player_account(), T::LastPlayerRatio::get()),
+			(Self::team_account(), T::TeamRatio::get()),
+			(Self::operator_account(), T::OperatorRatio::get()),
+		];
+
+		for t in targets.iter() {
+			let account = &t.0;
+			let balance = <Ledger<T>>::get(account);
+			let amount = money.saturating_mul(t.1.into());
+			let new_balance = balance.saturating_add(amount);
+			<Ledger<T>>::insert(account, new_balance);
+		}
+	}
 }
 
 decl_event!(
@@ -275,7 +339,7 @@ mod tests {
 
 	use runtime_io::with_externalities;
 	use primitives::{H256, Blake2Hasher};
-	use support::{impl_outer_origin, assert_ok, parameter_types};
+	use support::{impl_outer_origin, assert_ok, assert_err, parameter_types};
 	use sr_primitives::{traits::{ConvertInto, BlakeTwo256, IdentityLookup}, testing::Header};
 	use sr_primitives::weights::Weight;
 	use sr_primitives::Perbill;
@@ -366,8 +430,10 @@ mod tests {
 		type TeamRatio = TeamRatio;
 		type OperatorRatio = OperatorRatio;
 		type InvitorRatio = InvitorRatio;
+		type Currency = Balances;
 	}
 
+	type Balances = balances::Module<Test>;
 	type PandoraModule = Module<Test>;
 
 	// This function basically just builds a genesis storage key/value store according to
@@ -376,8 +442,10 @@ mod tests {
 		let mut t = system::GenesisConfig::default().build_storage::<Test>().unwrap();
 		balances::GenesisConfig::<Test> {
 			balances: vec![
-				(5, 500_000),
-				(6, 600_000),
+				(111, 100_000),
+				(555, 500_000),
+				(666, 600_000),
+				(888, 100_000), // ME
 			],
 			vesting: vec![],
 		}.assimilate_storage(&mut t).unwrap();
@@ -422,7 +490,20 @@ mod tests {
 	fn it_works_for_creating_dbox() {
 		with_externalities(&mut new_test_ext(), || {
 			// TODO:  Call create
+			assert_ok!(PandoraModule::init(Origin::signed(666), 100));
+			assert_ok!(PandoraModule::set_status(Origin::signed(666), Status::Running));
+			// Create a dbox
+			assert_ok!(PandoraModule::create_dbox(Origin::signed(888)));
+			assert_eq!(PandoraModule::all_dboxes_count(), 1);
+			assert_eq!(Balances::free_balance(&888), 99_900);
+
+			assert_eq!(PandoraModule::balance(&222), 35);
+			assert_eq!(PandoraModule::balance(&555), 5);
+
+			// Should error for not enough fund
+			assert_err!(PandoraModule::create_dbox(Origin::signed(123)), "balance too low to send value");
+			assert_eq!(PandoraModule::all_dboxes_count(), 1);
+
 		})
 	}
-
 }
