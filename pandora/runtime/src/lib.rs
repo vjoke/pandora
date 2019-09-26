@@ -149,9 +149,10 @@ parameter_types! {
 
 parameter_types! {
 	pub const ExpirationValue: u32 = 12 * 3600; // 12 hours
+	pub const MaxLatestValue: u64 = 100;
 	pub const MinUnitPrice: Balance = 0; // FIXME: 
 	pub const MaxUnitPrice: Balance = 3500000000; // FIXME: 
-	pub const BoxRatio: u32 = 35;
+	pub const DboxRatio: u32 = 35;
 	pub const ReserveRatio: u32 = 35;
 	pub const PoolRatio: u32 = 10;
 	pub const LastPlayerRatio: u32 = 5;
@@ -268,9 +269,10 @@ impl sudo::Trait for Runtime {
 impl pandora::Trait for Runtime {
 	type Event = Event;
 	type Expiration = ExpirationValue;
+	type MaxLatest = MaxLatestValue;
 	type MinUnitPrice = MinUnitPrice;
 	type MaxUnitPrice = MaxUnitPrice;
-	type BoxRatio = BoxRatio;
+	type DboxRatio = DboxRatio;
 	type ReserveRatio = ReserveRatio;
 	type PoolRatio = PoolRatio;
 	type LastPlayerRatio = LastPlayerRatio;
