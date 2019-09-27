@@ -103,7 +103,7 @@ pub trait Trait: balances::Trait {
 	/// Define the expiration in seconds for one round of game
 	type Expiration: Get<u32>; 
 
-	/// Max latest boxes
+	/// Max latest dboxes
 	type MaxLatest: Get<u64>;
 
 	/// Define min unit price for dbox
@@ -165,6 +165,9 @@ decl_storage! {
 		DboxOwner get(owner_of): map T::Hash => Option<T::AccountId>;
 		/// The active dbox count 
 		AllActiveDboxesCount get(all_active_dboxes_count): u64;
+
+		MaxActiveDboxesCount get(max_active_dboxes_count): u64;
+		MaxPresetActiveDboxesCount get(max_preset_active_dboxes_count): u64;
 
 		AllDboxesArray get(dbox_by_index): map u64 => DboxOf<T>;
 		AllDboxesCount get(all_dboxes_count): u64;
@@ -246,6 +249,10 @@ decl_module! {
 				let balance = <BalanceOf<T>>::zero();
 				<Ledger<T>>::insert(account, balance);
 			}
+			// TODO: config?
+			let default_max_value = 1000;
+			MaxActiveDboxesCount::put(&default_max_value);
+			MaxPreActiveDboxesCount::put(&default_max_value);
 
 			GameStatus::put(Status::Inited);
 			Timeout::put(T::Expiration::get());
@@ -266,6 +273,18 @@ decl_module! {
 			GameStatus::put(new_status);
 			// TODO: emit game event
 			Ok(())
+		}
+
+		/// Preet max active dboxes for the game
+		pub fn preset_max_active_dboxes_count(origin, max_active_dboxes_count: u64) -> Result {
+			let sender = ensure_signed(origin)?;
+			ensure!(sender == Self::admin_account(), "Not authorized");
+			ensure!(max_active_dboxes_count > 0 && max_active_dboxes_count < 1_000_000);
+			ensure!(max_active_dboxes_count != Self::max_preset_active_dboxes_count(), "New value should be different from current value");
+
+			MaxPresetActiveDboxesCount::put(max_active_dboxes_count);	
+			// TODO: emit game event
+			Ok(())	
 		}
 
 		// Create a dbox
@@ -374,8 +393,8 @@ decl_module! {
 		}
 
 		fn on_finalize(n: T::BlockNumber) {
-			let mut ops = 1000;
-			// Update status
+			let mut ops:i32 = 1000;
+			// Update game status
 			if GameStatus::get() == Status::Running {
 				let mut timeout = Self::timeout();
 				timeout = timeout.saturating_sub(10); // TODO: use config value
@@ -384,40 +403,29 @@ decl_module! {
 				}
 				Timeout::mutate(|n| *n = timeout);
 			}
-			// Send pending bonus
-			// TODO: double loop
-			let bonus_dbox = Self::bonus_dbox();
-			if bonus_dbox < Self::all_dboxes_count() {
-				let mut dbox = Self::dbox_by_index(bonus_dbox);
-				let mut counter = 0;
-				// FIXME: 
-				if dbox.bonus_per_dbox.is_zero() {
-					// update bonus position
-					BonusDbox::put(bonus_dbox+1); 
-					return;
+			// TODO: print debug info
+			// Drain pending bonus
+			loop {
+				if ops <= 0 {
+					break;
 				}
 
-				loop {
-					if dbox.bonus_position >= dbox.create_position {
-						// update bonus position
-						BonusDbox::put(bonus_dbox+1); 
-						break;
-					}
-					// send bonus 
-					Self::send_bonus(&mut dbox);
-					counter += 1;
-					// TODO: use config value
-					if counter == 100 {
-						break;
-					}
+				if !Self::drain_bonus(&mut ops) {
+					break;
 				}
-				// TODO: update dbox
-				<AllDboxesArray<T>>::insert(dbox.create_position, dbox);
-			} 
+			}
+
 			// Send money to latest boxes
 			if GameStatus::get() == Status::Settling {
-				if !Self::release_prize() {
-					Self::reset();
+				loop {
+					if ops <= 0 {
+						break;
+					}
+
+					if !Self::release_prize(&mut ops) {
+						Self::reset();
+						break;
+					}
 				}
 			}  
         }
@@ -462,10 +470,11 @@ impl <T: Trait> Module<T> {
 		let new_all_dboxes_count = all_dboxes_count.checked_add(1)
 			.ok_or("Overflow adding a new dbox to total supply")?;
 
-		// Sanity checking
+		// limit checking
 		let all_active_dboxes_count = Self::all_active_dboxes_count();
 		let new_all_active_dboxes_count = all_active_dboxes_count.checked_add(1)
 			.ok_or("Overflow adding a new dbox to total active dboxes")?;
+		ensure!(new_all_active_dboxes_count < Self::max_active_dboxes_count(), "Exceed max active dboxes limitation");
 
 		Ok(())
 	}
@@ -501,7 +510,7 @@ impl <T: Trait> Module<T> {
 		let all_active_dboxes_count = Self::all_active_dboxes_count();
 		if all_active_dboxes_count > 0 {
 			let bonus_amount = money.saturating_mul(T::DboxRatio::get().into());
-			// FIXME: TODO: support u64 
+			// FIXME: TODO: support u64?
 			new_dbox.bonus_per_dbox = bonus_amount / (all_active_dboxes_count as u32).into();
 		}	
 		// Give to other game acounts
@@ -599,8 +608,8 @@ impl <T: Trait> Module<T> {
 		Ok(())
 	}
 
-	/// Send bonus
-	fn send_bonus(dbox: &mut DboxOf<T>) -> Result {
+	/// Send pending bonus
+	fn send_pending_bonus(dbox: &mut DboxOf<T>) -> Result {
 		let mut prev_dbox = Self::dbox_by_index(dbox.bonus_position);
 		if prev_dbox.status == DboxStatus::Active || prev_dbox.status == DboxStatus::Opening {
 			prev_dbox.value += dbox.bonus_per_dbox;
@@ -745,8 +754,45 @@ impl <T: Trait> Module<T> {
 		Ok(())
 	}
 
+	// Drain bonus
+	fn drain_bonus(ops: &mut i32) -> bool {
+		let bonus_dbox = Self::bonus_dbox();
+		if bonus_dbox >= Self::all_dboxes_count() {
+			return false;
+		}
+		
+		let mut dbox = Self::dbox_by_index(bonus_dbox);
+		// FIXME: 
+		if dbox.bonus_per_dbox.is_zero() {
+			// update bonus position
+			BonusDbox::put(bonus_dbox+1); 
+			*ops -= 1;
+			return true;
+		}
+
+		loop {
+			if dbox.bonus_position >= dbox.create_position {
+				// update bonus position
+				BonusDbox::put(bonus_dbox+1);
+				*ops -= 1;
+				break;
+			}
+			// send bonus 
+			Self::send_pending_bonus(&mut dbox);
+			*ops -= 2;
+			// TODO: use config value
+			if *ops <= 0 {
+				break;
+			}
+		}
+		// update dbox
+		<AllDboxesArray<T>>::insert(dbox.create_position, dbox);
+		
+		true
+	}
+
 	/// Release prize for latest boxes
-	fn release_prize() -> bool {
+	fn release_prize(ops: &mut i32) -> bool {
 		let released_dboxes_count = Self::released_dboxes_count();
 		let latest_dboxes_count = Self::latest_dboxes_count();
 		let last_dbox_index = Self::last_dbox_index();
@@ -756,10 +802,14 @@ impl <T: Trait> Module<T> {
 				// Send the last big prize
 				if let Some(player) = Self::get_last_player() {
 					// FIXME: We do not care if transfer is ok or not
-					let last_player_prize = <Ledger<T>>::get(Self::last_player_account());
+					let last_player_account = Self::last_player_account();
+					let last_player_prize = <Ledger<T>>::get(&last_player_account);
 					let _ = T::Currency::transfer(&Self::cashier_account(), &player, last_player_prize);
+					let _ = Self::add_prize(&player, &last_player_prize);
+					// Reset last player account
 				}
 			} 
+			*ops -= 5;
 			return false;
 		}
 
@@ -770,10 +820,13 @@ impl <T: Trait> Module<T> {
 		let average_prize = Self::average_prize();
 		if !average_prize.is_zero() {
 			// FIXME: we don't care if the transfer is ok or not
-			let _ = T::Currency::transfer(&Self::cashier_account(), &player, average_prize);
+			let _ = T::Currency::transfer(&Self::cashier_account(), &player, &average_prize);
+			let _ = Self::add_prize(&player, &average_prize);
 		}
 		
 		ReleasedDboxesCount::mutate(|n| *n += 1);
+		*ops -= 3;
+
 		true
 	}
 
@@ -797,6 +850,8 @@ impl <T: Trait> Module<T> {
 
 		// Reset lastest dboxes 
 		Self::reset_latest_dboxes();
+
+		MaxActiveDboxesCount::put(Self::max_preset_active_dboxes_count());
 
 		// Reset status and timeout value
 		GameStatus::put(Status::Running);
