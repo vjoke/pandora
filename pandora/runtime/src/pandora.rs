@@ -73,6 +73,30 @@ pub struct Dbox<Hash, Balance, AccountId> {
 	bonus_position: u64,
 }
 
+#[derive(Encode, Decode, Clone, Debug, PartialEq)]
+pub enum PlayerStatus {
+	None,
+	/// The player is active
+	Active,
+	/// The player is forbidden 
+	Forbidden,
+}
+
+impl Default for PlayerStatus {
+	fn default() -> Self {
+		PlayerStatus::None
+	}
+}
+
+#[derive(Encode, Decode, Default, Clone, PartialEq)]
+pub struct Player<Balance> {
+	/// The account statistic information
+	total_bonus: Balance,
+	total_prize: Balance,
+	total_commission: Balance,
+	status: PlayerStatus,
+}
+
 /// The module's configuration trait.
 pub trait Trait: balances::Trait {
 	// TODO: Add other types and constants required configure this module.
@@ -109,6 +133,7 @@ type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::Ac
 type PositiveImbalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::PositiveImbalance;
 type NegativeImbalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::NegativeImbalance;
 type DboxOf<T: Trait> = Dbox<T::Hash, BalanceOf<T>, T::AccountId>;
+type PlayerOf<T: Trait> = Player<BalanceOf<T>>;
 
 // This module's storage items.
 decl_storage! {
@@ -133,11 +158,10 @@ decl_storage! {
 
 		DboxUnitPrice get(dbox_unit_price): BalanceOf<T>;
 		// The start position of current round
-		RoundStartPosition get(round_start_position): u64;
-		// The bonus position of current round
-		BonusPosition get(bonus_position): u64;
+		RoundStartDbox get(round_start_dbox): u64;
+		// The bonus dbox position of current round
+		BonusDbox get(bonus_dbox): u64;
 		// All the dboxes
-		// Dboxes get(dbox): map T::Hash => DboxOf<T>;
 		DboxOwner get(owner_of): map T::Hash => Option<T::AccountId>;
 		/// The active dbox count 
 		AllActiveDboxesCount get(all_active_dboxes_count): u64;
@@ -150,11 +174,16 @@ decl_storage! {
 		OwnedDboxesCount get(owned_dbox_count): map T::AccountId => u64;
 		OwnedDboxesIndex: map T::Hash => u64;
 
+		// Latest box related fields
 		LatestDboxes get(latest_dbox_by_index): map u64 => (T::AccountId, u64);
 		LastDboxIndex get(last_dbox_index): u64;
 		LatestDboxesCount get(latest_dboxes_count): u64;
 		ReleasedDboxesCount get(released_dboxes_count): u64;
 		AveragePrize get(average_prize): BalanceOf<T>;
+
+		// Players 
+		AllPlayers get(player): map T::AccountId => PlayerOf<T>;
+		AllPlayersCount get(player_count): u64;
 
 		Nonce: u64;
 	}
@@ -221,9 +250,9 @@ decl_module! {
 			GameStatus::put(Status::Inited);
 			Timeout::put(T::Expiration::get());
 			<DboxUnitPrice<T>>::put(dbox_unit_price);
-			RoundStartPosition::put(0);
-			BonusPosition::put(0);
-			// <AveragePrize<T>>::put(0);
+			RoundStartDbox::put(0);
+			BonusDbox::put(0);
+			<AveragePrize<T>>::put(<BalanceOf<T>>::zero());
 			// TODO: emit game event
 			Ok(())
 		}
@@ -242,13 +271,18 @@ decl_module! {
 		// Create a dbox
 		pub fn create_dbox(origin, invitor: Option<T::AccountId>) -> Result {
 			let sender = ensure_signed(origin)?;
-			if let Some(invitor_account) = &invitor {
-				ensure!(&sender != invitor_account, "Invitor should not be yourself");
-				let _ = Self::check_invitor(&invitor_account)?;
-			}
-			let _ = Self::check_ready()?;
-			// Check if the balance is enough to create a dbox
-			// TODO: Check if sender is specific accounts
+			let _ = Self::check_inviting(&invitor, &sender)?;
+			let _ = Self::ensure_status(vec![Status::Running])?;
+			// Check if the account is priviledged account
+			ensure!(!<Ledger<T>>::exists(&sender), "Priviledged account is not allowed");
+			
+			let _ = Self::do_create_dbox(&sender, &invitor, true)?;
+			// TODO: cashier_account?
+			Ok(())
+		}
+
+		fn do_create_dbox(sender: &T::AccountId, invitor: &Option<T::AccountId>, transfer: bool) -> Result {
+			// Generate hash to assign id of dbox
 			let nonce = Nonce::get();
 			let random_hash = (<system::Module<T>>::random_seed(), &sender, nonce)
 				.using_encoded(<T as system::Trait>::Hashing::hash);
@@ -260,20 +294,23 @@ decl_module! {
 				value: Zero::zero(),
 				version: 0,
 				invitor: invitor,
-				open_position: 0,
+				open_position: 0, // FIXME: 
 				bonus_per_dbox: Zero::zero(),
-				bonus_position: Self::round_start_position(),
+				bonus_position: Self::round_start_dbox(),
 			};
-
-			let _ = Self::check_insert(&sender, &random_hash, &new_dbox)?;
 			// Check if we can insert dbox without error
-			let _ = T::Currency::transfer(&sender, &Self::cashier_account(), Self::dbox_unit_price())?;
-
+			let _ = Self::check_insert(&sender, &random_hash, &new_dbox)?;
+			if transfer {
+				// Transfer fund of buying dbox to our cashier account
+				let _ = T::Currency::transfer(&sender, &Self::cashier_account(), Self::dbox_unit_price())?;
+			}
+			// From now on, all state transition operations should be infailable
 			Self::split_money(&mut new_dbox)?;
-			Self::insert(&sender, random_hash, &new_dbox)?;
-			Self::on_box_changed(&sender, &new_dbox);
+			Self::insert_dbox(&sender, random_hash, &new_dbox)?;
+			Self::on_box_operation(&sender, &new_dbox);
+			Self::may_insert_new_player(&sender);
+			// Change nonce value to introduce random value
 			Nonce::mutate(|n| *n += 1);
-			// TODO: cashier_account?
 			Ok(())
 		}
 
@@ -285,38 +322,53 @@ decl_module! {
 		/// 5. game is running
 		pub fn open_dbox(origin, dbox_id: T::Hash) -> Result {
 			let sender = ensure_signed(origin)?;
-			Self::check_ready()?;
+			let _ = Self::ensure_status(vec![Status::Running, Status::Settling, Status::Paused])?;
 			ensure!(<DboxOwner<T>>::exists(dbox_id), "Dbox does not exist");	
 			ensure!(Some(sender.clone()) == <DboxOwner<T>>::get(dbox_id), "The owner of the dbox is not the sender");
 
 			let mut dbox = Self::get_dbox_by_id(dbox_id).unwrap();
 			ensure!(dbox.status == DboxStatus::Active, "The status of dbox should be active");
-			
-			dbox.open_position = Self::all_dboxes_count(); // FIXME: 
-			if Self::has_pending_bonus() {
-				dbox.status = DboxStatus::Opening
-			} else {
-				dbox.status = DboxStatus::Opened;
-				Self::on_dbox_opened(&dbox);
+			// Mark open position	
+			dbox.open_position = Self::all_dboxes_count();
+			dbox.status = DboxStatus::Opening;
+			// FIXME: Double checking
+			let (has_pending, double) = Self::get_pending_bonus(&dbox);
+			if !has_pending {
+				Self::do_open_dbox(&mut dbox, double);
 			}
-
+			// Save status
 			<AllDboxesArray<T>>::insert(dbox.create_position, &dbox);
+			
+			if Status::Running == GameStatus::get() {
+				let all_active_dboxes_count = Self::all_active_dboxes_count();
+				let new_all_active_dboxes_count = all_active_dboxes_count.checked_sub(1)
+					.ok_or("Overflow substracting a dbox from total active dboxes")?;
 
-			let all_active_dboxes_count = Self::all_active_dboxes_count();
-			let new_all_active_dboxes_count = all_active_dboxes_count.checked_sub(1)
-				.ok_or("Overflow substracting a dbox from total active dboxes")?;
-
-			AllActiveDboxesCount::put(new_all_active_dboxes_count);	
-			Self::on_box_changed(&sender, &dbox);
-
+				AllActiveDboxesCount::put(new_all_active_dboxes_count);	
+				Self::on_box_operation(&sender, &dbox);
+			}
+			
 			Ok(())
 		}
 
 		/// Upgrade dbox, the following requirements should be met
 		pub fn upgrade_dbox(origin, dbox_id: T::Hash) -> Result {
 			let sender = ensure_signed(origin)?;
+			let _ = Self::ensure_status(vec![Status::Running])?;
 
-			// Self::create_dbox(origin, None);
+			ensure!(<DboxOwner<T>>::exists(dbox_id), "Dbox does not exist");	
+			ensure!(Some(sender.clone()) == <DboxOwner<T>>::get(dbox_id), "The owner of the dbox is not the sender");
+
+			let mut dbox = Self::get_dbox_by_id(dbox_id).unwrap();
+			ensure!(dbox.status == DboxStatus::Active, "The status of dbox should be active");
+
+			ensure!(dbox.value >= Self::dbox_unit_price(), "Not enough money");
+
+			// Create another new dbox with money in the old dbox
+			let _ = Self::do_create_dbox(&sender, &None, false)?;
+			dbox.value = dbox.value.saturating_sub(Self::dbox_unit_price());
+			// Save status
+			<AllDboxesArray<T>>::insert(dbox.create_position, &dbox);
 
 			Ok(())
 		}
@@ -334,21 +386,21 @@ decl_module! {
 			}
 			// Send pending bonus
 			// TODO: double loop
-			let bonus_position = Self::bonus_position();
-			if bonus_position < Self::all_dboxes_count() {
-				let mut dbox = Self::dbox_by_index(bonus_position);
+			let bonus_dbox = Self::bonus_dbox();
+			if bonus_dbox < Self::all_dboxes_count() {
+				let mut dbox = Self::dbox_by_index(bonus_dbox);
 				let mut counter = 0;
 				// FIXME: 
 				if dbox.bonus_per_dbox.is_zero() {
 					// update bonus position
-					BonusPosition::put(bonus_position+1); 
+					BonusDbox::put(bonus_dbox+1); 
 					return;
 				}
 
 				loop {
 					if dbox.bonus_position >= dbox.create_position {
 						// update bonus position
-						BonusPosition::put(bonus_position+1); 
+						BonusDbox::put(bonus_dbox+1); 
 						break;
 					}
 					// send bonus 
@@ -373,14 +425,30 @@ decl_module! {
 }
 
 impl <T: Trait> Module<T> {
-	fn check_invitor(account: &T::AccountId) -> Result {
-		// TODO: 
+	fn check_inviting(invitor_account: &Option<T::AccountId>, invitee: &T::AccountId) -> Result {
+		if let Some(invitor) = invitor_account {
+			// Make sure invitor is from the owner of previous creatd dbox
+			ensure!(<AllPlayers<T>>::exists(invitor), "Invitor should be the player");
+			let invitor_player = Self::player(invitor);
+			ensure!(invitor_player.status == PlayerStatus::Active, "Invitor should be active player");
+			
+			// Make sure invitee does not exists
+			ensure!(!<AllPlayers<T>>::exists(invitee), "Invitee sh be new player");
+			// TODO: add blacklist
+		}
+		
 		Ok(())
 	}
 
-	fn check_ready() -> Result {
-		ensure!(GameStatus::get() == Status::Running, "Not ready");
+	fn ensure_status(status_vec: Vec<Status>) -> Result {
+		let current_status = GameStatus::get();
+		ensure!(status_vec.iter().any(|status| current_status == *status), "Status is not ready");
 		Ok(())
+	}
+
+	fn is_staled_dbox(dbox: &DboxOf<T>) -> bool {
+		let round_start_dbox = Self::round_start_dbox();
+		dbox.create_position < round_start_dbox
 	}
 
 	fn check_insert(from: &T::AccountId, dbox_id: &T::Hash, new_dbox: &DboxOf<T>) -> Result {
@@ -409,49 +477,31 @@ impl <T: Trait> Module<T> {
 		Some(<AllDboxesArray<T>>::get(index))
 	}
 
-	fn insert(from: &T::AccountId, dbox_id: T::Hash, new_dbox: &DboxOf<T>) -> Result {
-		let _ = Self::check_insert(from, &dbox_id, &new_dbox)?; 
+	/// Insert the new player if does not exist
+	fn may_insert_new_player(player_account: &T::AccountId) -> Result {
+		if !<AllPlayers<T>>::exists(player_account) {
+			let player = PlayerOf::<T> {
+				total_bonus: Zero::zero(),
+				total_prize: Zero::zero(),
+				total_commission: Zero::zero(),
+				status: PlayerStatus::Active,	
+			};
 
-		let owned_dbox_count = Self::owned_dbox_count(from);
-		let new_owned_dbox_count = owned_dbox_count.checked_add(1)
-			.ok_or("Overflow adding a new dbox to account balance")?;
-
-		let all_dboxes_count = Self::all_dboxes_count();
-		let new_all_dboxes_count = all_dboxes_count.checked_add(1)
-			.ok_or("Overflow adding a new dbox to total supply")?;
-
-		// Sanity checking
-		let all_active_dboxes_count = Self::all_active_dboxes_count();
-		let new_all_active_dboxes_count = all_active_dboxes_count.checked_add(1)
-			.ok_or("Overflow adding a new dbox to total active dboxes")?;
-
-		// <Dboxes<T>>::insert(dbox_id, new_dbox);
-		<DboxOwner<T>>::insert(dbox_id, from);
-		AllActiveDboxesCount::put(new_all_active_dboxes_count);
-
-		<AllDboxesArray<T>>::insert(all_dboxes_count, new_dbox);
-		AllDboxesCount::put(new_all_dboxes_count);
-		<AllDboxesIndex<T>>::insert(dbox_id, all_dboxes_count);
-
-		<OwnedDboxesArray<T>>::insert((from.clone(), owned_dbox_count), dbox_id);
-        <OwnedDboxesCount<T>>::insert(from, new_owned_dbox_count);
-        <OwnedDboxesIndex<T>>::insert(dbox_id, owned_dbox_count);
-
-        Self::deposit_event(RawEvent::DboxCreated(from.clone(), dbox_id));
+			<AllPlayers<T>>::insert(player_account, player);
+			AllPlayersCount::mutate(|n| *n += 1);
+		}
 
 		Ok(())
 	}
 
-	
-
-	/// Split incoming money
+	/// Split fund of the dbox 
 	fn split_money(new_dbox: &mut DboxOf<T>) -> Result {
 		let money = Self::dbox_unit_price() / 100.into();
 		// Fill bonus info for all active dboxes if any
-		let all_active_dboxes_count= Self::all_active_dboxes_count();
+		let all_active_dboxes_count = Self::all_active_dboxes_count();
 		if all_active_dboxes_count > 0 {
 			let bonus_amount = money.saturating_mul(T::DboxRatio::get().into());
-			// TODO: support u64 
+			// FIXME: TODO: support u64 
 			new_dbox.bonus_per_dbox = bonus_amount / (all_active_dboxes_count as u32).into();
 		}	
 		// Give to other game acounts
@@ -474,7 +524,77 @@ impl <T: Trait> Module<T> {
 		if let Some(invitor_account) = &new_dbox.invitor {
 			let commission_amount = money.saturating_mul(T::InvitorRatio::get().into());
 			T::Currency::transfer(&Self::cashier_account(), &invitor_account, commission_amount)?;
+			// Update invitor's commission balance
+			Self::add_commission(&invitor_account, commission_amount);
 		}
+
+		Ok(())
+	}
+
+	// Delete balance of priviledged account
+	fn del_balance(account: &T::AccountId, amount: BalanceOf<T>) -> Result {
+		let balance = <Ledger<T>>::get(account);
+		let new_balance = balance.saturating_sub(amount); // FIXME: check saturating_sub
+		<Ledger<T>>::insert(account, new_balance);	
+		Ok(())
+	}
+
+	// Add the bonus 
+	fn add_bonus(account: &T::AccountId, amount: BalanceOf<T>) -> Result {
+		let mut player = Self::player(account);
+		player.total_bonus = player.total_bonus.saturating_add(amount);
+		<AllPlayers<T>>::insert(account, player);
+
+		Ok(())
+	}
+
+	// Add the prize 
+	fn add_prize(account: &T::AccountId, amount: BalanceOf<T>) -> Result {
+		let mut player = Self::player(account);
+		player.total_prize = player.total_prize.saturating_add(amount);
+		<AllPlayers<T>>::insert(account, player);
+
+		Ok(())
+	}
+
+	// Add the commission 
+	fn add_commission(account: &T::AccountId, amount: BalanceOf<T>) -> Result {
+		let mut player = Self::player(account);
+		player.total_commission = player.total_commission.saturating_add(amount);
+		<AllPlayers<T>>::insert(account, player);
+
+		Ok(())
+	}
+
+	// Insert the new dbox
+	fn insert_dbox(from: &T::AccountId, dbox_id: T::Hash, new_dbox: &DboxOf<T>) -> Result {
+		let _ = Self::check_insert(from, &dbox_id, &new_dbox)?; 
+
+		let owned_dbox_count = Self::owned_dbox_count(from);
+		let new_owned_dbox_count = owned_dbox_count.checked_add(1)
+			.ok_or("Overflow adding a new dbox to account balance")?;
+
+		let all_dboxes_count = Self::all_dboxes_count();
+		let new_all_dboxes_count = all_dboxes_count.checked_add(1)
+			.ok_or("Overflow adding a new dbox to total supply")?;
+
+		// Sanity checking
+		let all_active_dboxes_count = Self::all_active_dboxes_count();
+		let new_all_active_dboxes_count = all_active_dboxes_count.checked_add(1)
+			.ok_or("Overflow adding a new dbox to total active dboxes")?;
+
+		<DboxOwner<T>>::insert(dbox_id, from);
+		AllActiveDboxesCount::put(new_all_active_dboxes_count);
+
+		<AllDboxesArray<T>>::insert(all_dboxes_count, new_dbox);
+		AllDboxesCount::put(new_all_dboxes_count);
+		<AllDboxesIndex<T>>::insert(dbox_id, all_dboxes_count);
+
+		<OwnedDboxesArray<T>>::insert((from.clone(), owned_dbox_count), dbox_id);
+        <OwnedDboxesCount<T>>::insert(from, new_owned_dbox_count);
+        <OwnedDboxesIndex<T>>::insert(dbox_id, owned_dbox_count);
+
+        Self::deposit_event(RawEvent::DboxCreated(from.clone(), dbox_id));
 
 		Ok(())
 	}
@@ -486,9 +606,7 @@ impl <T: Trait> Module<T> {
 			prev_dbox.value += dbox.bonus_per_dbox;
 			// FIXME
 			if prev_dbox.status == DboxStatus::Opening && prev_dbox.open_position == dbox.create_position {
-				prev_dbox.status = DboxStatus::Opened;
-				Self::on_dbox_opened(&prev_dbox);
-				prev_dbox.value = Zero::zero();
+				Self::do_open_dbox(&mut prev_dbox, true);
 			} 
 			<AllDboxesArray<T>>::insert(prev_dbox.create_position, prev_dbox);
 		}
@@ -497,26 +615,64 @@ impl <T: Trait> Module<T> {
 		Ok(())
 	}
 
-	fn has_pending_bonus() -> bool {
-		if Self::bonus_position() == Self::all_dboxes_count() {
+	fn has_pending_bonus(dbox: &DboxOf<T>) -> bool {
+		if Self::is_staled_dbox(dbox) {
+			return false;
+		}
+		if Self::bonus_dbox() == Self::all_dboxes_count() {
 			return false;
 		}
 		true
 	}
+
+	// Get pending bonus and flag to indicate if player will get double prize
+	fn get_pending_bonus(dbox: &DboxOf<T>) -> (bool, bool) {
+		let status = GameStatus::get();
+		
+		if Self::is_staled_dbox(dbox) {
+			return (false, false);
+		}
+
+		let mut double = true;
+		if status == Status::Settling {
+			double = false;
+		}
+
+		if Self::bonus_dbox() == Self::all_dboxes_count() {
+			return (false, double);
+		}
+
+		(true, double)
+	}
+
 	/// Settle money for the opened dbox
-	fn on_dbox_opened(dbox: &DboxOf<T>) -> Result {
+	fn do_open_dbox(dbox: &mut DboxOf<T>, double: bool) -> Result {
 		// FIXME: we do not care if transfer is ok or not
 		if let Some(player) = Self::owner_of(dbox.id) {
 			if !dbox.value.is_zero() {
-				let _ = T::Currency::transfer(&Self::cashier_account(), &player, dbox.value);
+				let amount = if double {
+					dbox.value + dbox.value
+				} else {
+					dbox.value 
+				};
+				
+				let _ = T::Currency::transfer(&Self::cashier_account(), &player, amount);
+				Self::add_bonus(&player, amount);
+
+				if double {
+					Self::del_balance(&Self::pool_account(), dbox.value);
+				}
 			}
 		}
+
+		dbox.status = DboxStatus::Opened;
+		dbox.value = Zero::zero();
 		
 		Ok(())
 	}
 
 	/// Called when box operation occurs 
-	fn on_box_changed(player: &T::AccountId, dbox: &DboxOf<T>) -> Result {
+	fn on_box_operation(player: &T::AccountId, dbox: &DboxOf<T>) -> Result {
 		// Update latest boxes 
 		let latest_dboxes_count = Self::latest_dboxes_count();
 		let last_dbox_index = Self::last_dbox_index();
@@ -556,7 +712,7 @@ impl <T: Trait> Module<T> {
 	}
 
 	/// Reset lastest boxex information
-	fn reset_latest_boxes() -> Result {
+	fn reset_latest_dboxes() -> Result {
 		let latest_dboxes_count = Self::latest_dboxes_count();
 		let last_dbox_index = Self::last_dbox_index();	
 
@@ -567,6 +723,8 @@ impl <T: Trait> Module<T> {
 		LastDboxIndex::mutate(|n| *n = 0);
 		LatestDboxesCount::mutate(|n| *n = 0);
 		ReleasedDboxesCount::mutate(|n| *n = 0);
+
+		<AveragePrize<T>>::put(<BalanceOf<T>>::zero());
 
 		Ok(())
 	}
@@ -619,10 +777,30 @@ impl <T: Trait> Module<T> {
 		true
 	}
 
-	/// Reset the game and start again
+	/// Reset the game and start again, note that all bonus transfer should be finished before reset
 	fn reset() -> Result {
-		// TODO: 
-		Self::reset_latest_boxes();
+		// reset round positions
+		let all_dboxes_count = Self::all_dboxes_count();
+
+		RoundStartDbox::put(all_dboxes_count);
+		BonusDbox::put(all_dboxes_count);
+		AllActiveDboxesCount::put(0);
+
+		// FIXME: Reset balances of proxy accounts
+		let accounts: Vec<T::AccountId> = vec![Self::cashier_account(), Self::reserve_account(),
+			Self::pool_account(), Self::last_player_account()];
+
+		for account in accounts.iter() {
+			let balance = <BalanceOf<T>>::zero();
+			<Ledger<T>>::insert(account, balance);
+		}
+
+		// Reset lastest dboxes 
+		Self::reset_latest_dboxes();
+
+		// Reset status and timeout value
+		GameStatus::put(Status::Running);
+		Timeout::put(T::Expiration::get());
 		Ok(())
 	}
 }
