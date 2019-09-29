@@ -64,6 +64,9 @@ pub type DigestItem = generic::DigestItem<Hash>;
 
 mod pandora;
 
+#[cfg(test)]
+mod pandora_test;
+
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
@@ -430,15 +433,4 @@ impl_runtime_apis! {
 			opaque::SessionKeys::generate(seed)
 		}
 	}
-}
-/// tests for this module
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn have_a_test() {
-
-	}
-
 }
