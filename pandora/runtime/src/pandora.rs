@@ -236,6 +236,8 @@ decl_storage! {
         AllPlayers get(player): map T::AccountId => PlayerOf<T>;
         /// The count of all players
         AllPlayersCount get(player_count): u64;
+        /// The maximus ops for each block
+        MaxOps get(max_ops): u32;
         /// The nonce value for hash of dbox
         Nonce: u64;
     }
@@ -296,6 +298,7 @@ decl_module! {
             RoundStartDbox::put(0);
             BonusDbox::put(0);
             <AveragePrize<T>>::put(<BalanceOf<T>>::zero());
+            MaxOps::put(100);
             // Trigger event 
             Self::deposit_event(RawEvent::GameInited(Self::block_number(), sender.clone()));
             Ok(())
@@ -308,6 +311,7 @@ decl_module! {
         pub fn set_status(origin, new_status: Status) -> Result {
             let sender = ensure_signed(origin)?;
             ensure!(sender == Self::admin_account(), "Not authorized");
+            ensure!(GameStatus::exists(), "Not inited");
             ensure!(new_status != Status::Inited, "Invalid new status");
             ensure!(new_status != GameStatus::get(), "New status should be different from current status");
 
@@ -320,6 +324,21 @@ decl_module! {
                 _ => (), 
             }
 
+            Ok(())
+        }
+
+        /// Set the maximus ops for each block
+        /// 
+        /// @origin
+        /// @new_max_ops new max ops
+        pub fn set_max_ops(origin, new_max_ops: u32) -> Result {
+            let sender = ensure_signed(origin)?;
+            ensure!(sender == Self::admin_account(), "Not authorized");
+            ensure!(GameStatus::exists(), "Not inited");
+            ensure!(new_max_ops != Self::max_ops(), "New value should be different from current value");
+            ensure!(new_max_ops > 0 && new_max_ops <= 10_000, "Invalid range"); // FIXME: (0, 10_000]
+
+            MaxOps::put(new_max_ops);
             Ok(())
         }
 
@@ -429,7 +448,7 @@ decl_module! {
         /// 
         /// @n  the block number
         fn on_finalize(_n: T::BlockNumber) {
-            let mut ops:i32 = 1000;
+            let mut ops:i32 = Self::max_ops() as i32;
             // Update game status
             if GameStatus::get() == Status::Running {
                 let mut timeout = Self::timeout();
