@@ -154,21 +154,21 @@ decl_event!(
         BlockNumber = <T as system::Trait>::BlockNumber,
         AccountId = <T as system::Trait>::AccountId,
     {
-        /// Emitted when new dbox is created
+        /// New dbox is created
         DboxCreated(Hash, AccountId),
-        /// Emitted when dobx is opening 
+        /// Dobx is opening 
         DboxOpening(Hash, AccountId),
-        /// Emitted when dobx is opened
+        /// Dobx is opened
         DboxOpened(Hash),
-        /// Emitted when dbox is upgraded
+        /// Dbox is upgraded
         DboxUpgraded(Hash, AccountId),
-        /// Emitted when game is inited
+        /// Game is inited
         GameInited(BlockNumber, AccountId),
-        /// Emitted when game is inited
+        /// Game is inited
         GameRunning(BlockNumber, Option<AccountId>),
-        /// Emitted when game is settling
+        /// Game is settling
         GameSettling(BlockNumber),
-        /// Emitted when game is stopped
+        /// Game is stopped
         GameStopped(BlockNumber, AccountId),
     }
 );
@@ -278,7 +278,7 @@ decl_module! {
             ensure!(!GameStatus::exists(), "Already inited");
             // Check unit price
             ensure!(dbox_unit_price > T::MinUnitPrice::get(), "Unit price is too low");
-            ensure!(dbox_unit_price < T::MaxUnitPrice::get(), "Unit price is too high");
+            ensure!(dbox_unit_price <= T::MaxUnitPrice::get(), "Unit price is too high");
             // Init each account of ledger
             let accounts: Vec<T::AccountId> = vec![Self::admin_account(), Self::cashier_account(), Self::reserve_account(),
                 Self::pool_account(), Self::last_player_account(), Self::team_account(), Self::operator_account()];
@@ -308,10 +308,44 @@ decl_module! {
         /// 
         /// @origin
         /// @new_status new status of the system
-        pub fn set_status(origin, new_status: Status) -> Result {
+        // pub fn set_status(origin, new_status: Status) -> Result {
+        //     let sender = ensure_signed(origin)?;
+        //     ensure!(sender == Self::admin_account(), "Not authorized");
+        //     ensure!(GameStatus::exists(), "Not inited");
+        //     ensure!(new_status != Status::Inited, "Invalid new status");
+        //     ensure!(new_status != GameStatus::get(), "New status should be different from current status");
+
+        //     GameStatus::put(new_status);
+        //     let block_number = Self::block_number();
+        //     // Trigger event
+        //     match new_status {
+        //         Status::Running => Self::deposit_event(RawEvent::GameRunning(block_number, Some(sender.clone()))),
+        //         Status::Stopped => Self::deposit_event(RawEvent::GameStopped(block_number, sender.clone())),
+        //         _ => (), 
+        //     }
+
+        //     Ok(())
+        // }
+
+        /// Set the new status for the game
+        /// 
+        /// @origin
+        /// @value new status of the system
+        pub fn set_status(origin, value: u8) -> Result {
             let sender = ensure_signed(origin)?;
             ensure!(sender == Self::admin_account(), "Not authorized");
             ensure!(GameStatus::exists(), "Not inited");
+
+            let new_status: Status = match value {
+                0 => Status::None,
+                1 => Status::Inited,
+                2 => Status::Running,
+                3 => Status::Settling,
+                4 => Status::Paused,
+                5 => Status::Stopped,
+                _ => return Err("Invalid status value"),
+            };
+        
             ensure!(new_status != Status::Inited, "Invalid new status");
             ensure!(new_status != GameStatus::get(), "New status should be different from current status");
 
@@ -342,7 +376,7 @@ decl_module! {
             Ok(())
         }
 
-        /// Preet max active dboxes for the game
+        /// Preset max active dboxes for the game
         /// 
         /// @origin
         /// @max_active_dboxes_count    maximum active dboxes permitted
@@ -360,7 +394,39 @@ decl_module! {
         /// 
         /// @origin the creator
         /// @invitor the invitor of the new dbox
-        pub fn create_dbox(origin, invitor: Option<T::AccountId>) -> Result {
+        // pub fn create_dbox(origin, invitor: Option<T::AccountId>) -> Result {
+        //     let sender = ensure_signed(origin)?;
+        //     let _ = Self::check_inviting(&invitor, &sender)?;
+        //     let _ = Self::ensure_status(vec![Status::Running])?;
+        //     // Check if the account is system account
+        //     ensure!(!<Ledger<T>>::exists(&sender), "System account is not allowed");
+
+        //     let _ = Self::do_create_dbox(&sender, invitor, true)?;
+        //     // TODO: cashier_account?
+        //     Ok(())
+        // }
+
+        /// Create a dbox
+        /// 
+        /// @origin the creator
+        pub fn create_dbox(origin) -> Result {
+            let invitor = None;
+            let sender = ensure_signed(origin)?;
+            let _ = Self::check_inviting(&invitor, &sender)?;
+            let _ = Self::ensure_status(vec![Status::Running])?;
+            // Check if the account is system account
+            ensure!(!<Ledger<T>>::exists(&sender), "System account is not allowed");
+
+            let _ = Self::do_create_dbox(&sender, invitor, true)?;
+            // TODO: cashier_account?
+            Ok(())
+        }
+
+        /// Create a dbox with invitor
+        /// 
+        /// @origin the creator
+        /// @invitor the invitor of the new dbox
+        pub fn create_dbox_with_invitor(origin, invitor: Option<T::AccountId>) -> Result {
             let sender = ensure_signed(origin)?;
             let _ = Self::check_inviting(&invitor, &sender)?;
             let _ = Self::ensure_status(vec![Status::Running])?;
@@ -378,7 +444,7 @@ decl_module! {
         /// 2. box does exist
         /// 3. the owner of the dbox is the sender
         /// 4. the status is active
-        /// 5. game is running
+        /// 5. game status is running, settling or paused
         /// 
         /// @origin
         /// @dbox_id    the dbox id
@@ -401,7 +467,7 @@ decl_module! {
             // Save status
             <AllDboxesArray<T>>::insert(dbox.create_position, &dbox);
             // Update counter for running game
-            if Status::Running == GameStatus::get() {
+            if double {
                 let all_active_dboxes_count = Self::all_active_dboxes_count();
                 let new_all_active_dboxes_count = all_active_dboxes_count.checked_sub(1)
                     .ok_or("Overflow substracting a dbox from total active dboxes")?;
@@ -767,9 +833,9 @@ impl<T: Trait> Module<T> {
             return (false, false);
         }
 
-        let mut double = true;
-        if status == Status::Settling {
-            double = false;
+        let mut double = false;
+        if status == Status::Running {
+            double = true;
         }
 
         if Self::bonus_dbox() == Self::all_dboxes_count() {

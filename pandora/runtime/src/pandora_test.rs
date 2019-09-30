@@ -191,7 +191,7 @@ mod tests {
                 Status::Running
             ));
             // Create a dbox
-            assert_ok!(Pandora::create_dbox(Origin::signed(RAY), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
             assert_eq!(Pandora::all_dboxes_count(), 1);
             assert_eq!(Pandora::all_active_dboxes_count(), 1);
             assert_eq!(Balances::free_balance(&RAY), 99_900);
@@ -205,7 +205,7 @@ mod tests {
 
             // Should error for not enough fund
             assert_err!(
-                Pandora::create_dbox(Origin::signed(123), None),
+                Pandora::create_dbox_with_invitor(Origin::signed(123), None),
                 "balance too low to send value"
             );
             assert_eq!(Pandora::all_dboxes_count(), 1);
@@ -222,7 +222,7 @@ mod tests {
                 Status::Running
             ));
             // Ray creates a dbox
-            assert_ok!(Pandora::create_dbox(Origin::signed(RAY), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
             assert_eq!(Pandora::all_dboxes_count(), 1);
             assert_eq!(Pandora::all_active_dboxes_count(), 1);
             assert_eq!(Balances::free_balance(&RAY), 99_900);
@@ -239,7 +239,7 @@ mod tests {
             assert_eq!(Pandora::bonus_dbox(), 1);
 
             // Alice creates a dbox
-            assert_ok!(Pandora::create_dbox(Origin::signed(ALICE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(ALICE), None));
             assert_eq!(Pandora::all_dboxes_count(), 2);
             assert_eq!(Pandora::all_active_dboxes_count(), 2);
 
@@ -281,13 +281,13 @@ mod tests {
             assert_eq!(Pandora::round_start_dbox(), 2);
             assert_eq!(Pandora::all_active_dboxes_count(), 0);
             // Bob creates a new dbox
-            assert_ok!(Pandora::create_dbox(Origin::signed(BOB), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), None));
             // Dave creates a new dbox
-            assert_ok!(Pandora::create_dbox(Origin::signed(DAVE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(DAVE), None));
             // Eve creates a new dbox
-            assert_ok!(Pandora::create_dbox(Origin::signed(EVE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(EVE), None));
             // FERDIE creates a new dbox
-            assert_ok!(Pandora::create_dbox(Origin::signed(FERDIE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(FERDIE), None));
             assert_eq!(Pandora::timeout(), 50);
             assert_eq!(Pandora::all_dboxes_count(), 6);
             assert_eq!(Pandora::all_active_dboxes_count(), 4);

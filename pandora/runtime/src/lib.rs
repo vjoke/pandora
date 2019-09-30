@@ -151,10 +151,11 @@ parameter_types! {
 }
 
 parameter_types! {
-	pub const ExpirationValue: u32 = 12 * 3600; // 12 hours
+	pub const ExpirationValue: u32 = 60; // 1 minute
+	// pub const ExpirationValue: u32 = 12 * 3600; // 12 hours
 	pub const MaxLatestValue: u64 = 100;
-	pub const MinUnitPrice: Balance = 0; // FIXME: 
-	pub const MaxUnitPrice: Balance = 3500000000; // FIXME: 
+	pub const MinUnitPrice: Balance = 0;
+	pub const MaxUnitPrice: Balance = 10_000_000_000;
 	pub const DboxRatio: u32 = 35;
 	pub const ReserveRatio: u32 = 35;
 	pub const PoolRatio: u32 = 10;

@@ -46,7 +46,7 @@ impl Alternative {
 	pub(crate) fn load(self) -> Result<ChainSpec, String> {
 		Ok(match self {
 			Alternative::Development => ChainSpec::from_genesis(
-				"Development",
+				"Pandora",
 				"dev",
 				|| testnet_genesis(vec![
 					get_authority_keys_from_seed("Alice"),
@@ -55,6 +55,12 @@ impl Alternative {
 				vec![
 					get_from_seed::<AccountId>("Alice"),
 					get_from_seed::<AccountId>("Bob"),
+					get_from_seed::<AccountId>("Charlie"),
+					get_from_seed::<AccountId>("Dave"),
+					get_from_seed::<AccountId>("Eve"),
+					get_from_seed::<AccountId>("Ferdie"),
+					get_from_seed::<AccountId>("Nicole"),
+					get_from_seed::<AccountId>("Ray"),
 					get_from_seed::<AccountId>("Alice//stash"),
 					get_from_seed::<AccountId>("Bob//stash"),
 				],
@@ -80,6 +86,7 @@ impl Alternative {
 					get_from_seed::<AccountId>("Dave"),
 					get_from_seed::<AccountId>("Eve"),
 					get_from_seed::<AccountId>("Ferdie"),
+					get_from_seed::<AccountId>("Alice//Cashier"),
 					get_from_seed::<AccountId>("Alice//stash"),
 					get_from_seed::<AccountId>("Bob//stash"),
 					get_from_seed::<AccountId>("Charlie//stash"),
