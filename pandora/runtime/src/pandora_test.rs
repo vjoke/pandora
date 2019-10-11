@@ -109,24 +109,24 @@ mod tests {
     type Pandora = Module<Test>;
 
     // Define previledged acounts
-    const ADMIN_ACCOUT:u64 = 10000; 
-    const CASHIER_ACCOUNT:u64 = 10001; 
-    const RESERVE_ACCOUNT:u64 = 10002; 
-    const POOL_ACCOUNT:u64 = 10003; 
-    const LAST_PLAYER_ACCOUNT:u64 = 10004; 
-    const TEAM_ACCOUNT:u64 = 10005; 
-    const OPERATOR_ACCOUNT:u64 = 10006; 
+    const ADMIN_ACCOUT: u64 = 10000;
+    const CASHIER_ACCOUNT: u64 = 10001;
+    const RESERVE_ACCOUNT: u64 = 10002;
+    const POOL_ACCOUNT: u64 = 10003;
+    const LAST_PLAYER_ACCOUNT: u64 = 10004;
+    const TEAM_ACCOUNT: u64 = 10005;
+    const OPERATOR_ACCOUNT: u64 = 10006;
 
     // Define general player account
-    const ALICE:u64 = 100;
-    const BOB:u64 = 101;
-    const DAVE:u64 = 102;
-    const EVE:u64 = 103;
-    const FERDIE:u64 = 104;
-    const CHARLIE:u64 = 105;
-    const DJANGO:u64 = 106;
-    const NICOLE:u64 = 107;
-    const RAY:u64 = 108;
+    const ALICE: u64 = 100;
+    const BOB: u64 = 101;
+    const DAVE: u64 = 102;
+    const EVE: u64 = 103;
+    const FERDIE: u64 = 104;
+    const CHARLIE: u64 = 105;
+    const DJANGO: u64 = 106;
+    const NICOLE: u64 = 107;
+    const RAY: u64 = 108;
 
     // This function basically just builds a genesis storage key/value store according to
     // our desired mockup.
@@ -148,7 +148,7 @@ mod tests {
                 (CHARLIE, 100_000),
                 (DJANGO, 100_000),
                 (NICOLE, 100_000),
-                (RAY, 100_000),
+                (RAY, 100_000_000),
             ],
             vesting: vec![],
         }
@@ -184,17 +184,17 @@ mod tests {
     #[test]
     fn it_works_for_creating_dbox() {
         with_externalities(&mut new_test_ext(), || {
-            // Init the game 
+            // Init the game
             assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
             assert_ok!(Pandora::set_status(
                 Origin::signed(ADMIN_ACCOUT),
-                Status::Running
+                Status::Running as u8
             ));
             // Create a dbox
             assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
             assert_eq!(Pandora::all_dboxes_count(), 1);
             assert_eq!(Pandora::all_active_dboxes_count(), 1);
-            assert_eq!(Balances::free_balance(&RAY), 99_900);
+            assert_eq!(Balances::free_balance(&RAY), 99_999_900);
 
             // Check if money is split properly
             assert_eq!(Pandora::balance(&RESERVE_ACCOUNT), 35);
@@ -215,21 +215,19 @@ mod tests {
     #[test]
     fn it_works_for_pending_bonus() {
         with_externalities(&mut new_test_ext(), || {
-            // Init the game 
+            // Init the game
             assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
             assert_ok!(Pandora::set_status(
                 Origin::signed(ADMIN_ACCOUT),
-                Status::Running
+                Status::Running as u8
             ));
             // Ray creates a dbox
             assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
             assert_eq!(Pandora::all_dboxes_count(), 1);
             assert_eq!(Pandora::all_active_dboxes_count(), 1);
-            assert_eq!(Balances::free_balance(&RAY), 99_900);
 
             assert_eq!(Pandora::all_dboxes_count(), 1);
             assert_eq!(Pandora::bonus_dbox(), 0);
-            
             let dbox = Pandora::dbox_by_index(0);
             assert_eq!(dbox.create_position, 0);
             assert_eq!(dbox.bonus_position, 0);
@@ -239,7 +237,10 @@ mod tests {
             assert_eq!(Pandora::bonus_dbox(), 1);
 
             // Alice creates a dbox
-            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(ALICE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(
+                Origin::signed(ALICE),
+                None
+            ));
             assert_eq!(Pandora::all_dboxes_count(), 2);
             assert_eq!(Pandora::all_active_dboxes_count(), 2);
 
@@ -252,7 +253,7 @@ mod tests {
             <Pandora as OnFinalize<u64>>::on_finalize(2);
             assert_eq!(Pandora::timeout(), 40);
             let dbox = Pandora::dbox_by_index(1);
-            assert_eq!(dbox.bonus_position, 1); 
+            assert_eq!(dbox.bonus_position, 1);
 
             let dbox = Pandora::dbox_by_index(0);
             assert_eq!(dbox.value, 35);
@@ -260,22 +261,24 @@ mod tests {
             // Ray open the dbox, will get twice of the box value
             assert_ok!(Pandora::open_dbox(Origin::signed(RAY), dbox.id));
             assert_eq!(Pandora::timeout(), 50);
-            assert_eq!(Balances::free_balance(&RAY), 99_900 + 35*2);
-            
+            assert_eq!(Balances::free_balance(&RAY), 99_999_900 + 35 * 2);
             assert_eq!(Pandora::balance(&POOL_ACCOUNT), 20);
             assert_eq!(Pandora::average_prize(), 0);
-            // Finalize blocks 
+            // Finalize blocks
             for i in 1..5 {
-                <Pandora as OnFinalize<u64>>::on_finalize(2+i);
-            } 
+                <Pandora as OnFinalize<u64>>::on_finalize(2 + i);
+            }
             assert_eq!(Pandora::timeout(), 10);
-            // Finalize blocks 
+            // Finalize blocks
             <Pandora as OnFinalize<u64>>::on_finalize(7);
             assert_eq!(Pandora::balance(&POOL_ACCOUNT), 0);
             assert_eq!(Pandora::average_prize(), 0);
-            assert_eq!(Balances::free_balance(&RAY), 99_900 + 70 + 20/3*2 + 5 * 2); // 2 box operations
-            assert_eq!(Balances::free_balance(&ALICE), 99_900 + 20/3); // 1 box operation
-            // Next round begins
+            assert_eq!(
+                Balances::free_balance(&RAY),
+                99_999_900 + 70 + 20 / 3 * 2 + 5 * 2
+            ); // 2 box operations
+            assert_eq!(Balances::free_balance(&ALICE), 99_900 + 20 / 3); // 1 box operation
+                                                                         // Next round begins
             assert_eq!(Pandora::game_status(), Status::Running);
             assert_eq!(Pandora::timeout(), 50);
             assert_eq!(Pandora::round_start_dbox(), 2);
@@ -283,16 +286,22 @@ mod tests {
             // Bob creates a new dbox
             assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), None));
             // Dave creates a new dbox
-            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(DAVE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(
+                Origin::signed(DAVE),
+                None
+            ));
             // Eve creates a new dbox
             assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(EVE), None));
             // FERDIE creates a new dbox
-            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(FERDIE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(
+                Origin::signed(FERDIE),
+                None
+            ));
             assert_eq!(Pandora::timeout(), 50);
             assert_eq!(Pandora::all_dboxes_count(), 6);
             assert_eq!(Pandora::all_active_dboxes_count(), 4);
 
-            // Finalize blocks 
+            // Finalize blocks
             <Pandora as OnFinalize<u64>>::on_finalize(7);
             assert_eq!(Pandora::timeout(), 40);
             // Alice opens a staled dbox
@@ -301,23 +310,197 @@ mod tests {
             assert_eq!(Balances::free_balance(&ALICE), 99_906);
 
             let dbox = Pandora::dbox_by_index(2);
-            assert_eq!(dbox.value, 35 + 35/2 + 35/3);
-            assert_err!(Pandora::upgrade_dbox(Origin::signed(RAY), dbox.id), "The owner of the dbox is not the sender");
-            assert_err!(Pandora::upgrade_dbox(Origin::signed(BOB), dbox.id), "Not enough money");
+            assert_eq!(dbox.value, 35 + 35 / 2 + 35 / 3);
+            assert_err!(
+                Pandora::upgrade_dbox(Origin::signed(RAY), dbox.id),
+                "The owner of the dbox is not the sender"
+            );
+            assert_err!(
+                Pandora::upgrade_dbox(Origin::signed(BOB), dbox.id),
+                "Not enough money"
+            );
 
             let dbox = Pandora::dbox_by_index(3);
-            assert_eq!(dbox.value, 35/2 + 35/3);
+            assert_eq!(dbox.value, 35 / 2 + 35 / 3);
 
             let dbox = Pandora::dbox_by_index(4);
-            assert_eq!(dbox.value, 35/3);
+            assert_eq!(dbox.value, 35 / 3);
 
-            // Finalize blocks 
+            // Finalize blocks
             for i in 1..4 {
-                <Pandora as OnFinalize<u64>>::on_finalize(2+i);
-            } 
+                <Pandora as OnFinalize<u64>>::on_finalize(2 + i);
+            }
             assert_eq!(Pandora::timeout(), 10);
             assert_eq!(Balances::free_balance(&FERDIE), 99_900);
-
         })
+    }
+
+    #[test]
+    fn it_works_for_upgrading_dbox() {
+        with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_eq!(Pandora::game_status(), Status::Inited);
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // Ray creates a dbox
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            let dbox = Pandora::dbox_by_index(0);
+            // Bob tries to upgrade a dbox of Ray
+            assert_err!(
+                Pandora::upgrade_dbox(Origin::signed(BOB), dbox.id),
+                "The owner of the dbox is not the sender"
+            );
+            // Ray tries to upgrade a dbox without enough balance
+            assert_err!(
+                Pandora::upgrade_dbox(Origin::signed(RAY), dbox.id),
+                "Not enough money"
+            );
+            assert_eq!(dbox.value, 0);
+            // Dave creates a dbox and open it at once for 3 times
+            for _i in 1..4 {
+                assert_ok!(Pandora::create_dbox_with_invitor(
+                    Origin::signed(DAVE),
+                    None
+                ));
+                let all_dboxes_count = Pandora::all_dboxes_count();
+                let dbox = Pandora::dbox_by_index(all_dboxes_count - 1);
+                assert_eq!(dbox.status, DboxStatus::Active);
+                assert_ok!(Pandora::open_dbox(Origin::signed(DAVE), dbox.id));
+                let dbox = Pandora::dbox_by_index(all_dboxes_count - 1);
+                assert_eq!(dbox.status, DboxStatus::Opening);
+            }
+
+            for i in 1..5 {
+                <Pandora as OnFinalize<u64>>::on_finalize(i);
+            }
+
+            assert_eq!(Pandora::timeout(), 10);
+            let dbox = Pandora::dbox_by_index(0);
+            assert_eq!(dbox.value, 35 * 3);
+            // Pause game
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Paused as u8
+            ));
+            assert_err!(
+                Pandora::upgrade_dbox(Origin::signed(RAY), dbox.id),
+                "Status is not ready"
+            );
+            // Run game again
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // Upgrade again
+            assert_ok!(Pandora::upgrade_dbox(Origin::signed(RAY), dbox.id));
+            assert_eq!(Pandora::timeout(), 10 + 30);
+            let dbox = Pandora::dbox_by_index(0);
+            // Check balance
+            assert_eq!(dbox.value, 35 * 3 - 100);
+            for i in 1..5 {
+                <Pandora as OnFinalize<u64>>::on_finalize(5);
+            }
+            // 2nd round starts
+            assert_eq!(Pandora::round_start_dbox(), 4 + 1); // 4 created dbox with an upgraded dbox
+            assert_eq!(Pandora::timeout(), 50);
+            assert_eq!(Pandora::all_dboxes_count(), 5);
+            let dbox = Pandora::dbox_by_index(4);
+            assert_eq!(dbox.value, 0);
+            assert_eq!(dbox.create_position, 4);
+            assert_eq!(dbox.bonus_position, 4);
+            assert_err!(
+                Pandora::upgrade_dbox(Origin::signed(RAY), dbox.id),
+                "Not enough money"
+            );
+            assert_eq!(dbox.status, DboxStatus::Active);
+        })
+    }
+
+    #[test]
+    fn it_works_for_staled_dbox() {
+        with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // Ray creates a dbox
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            // Dave creates a dbox and open it at once for 3 times
+            for _i in 1..4 {
+                assert_ok!(Pandora::create_dbox_with_invitor(
+                    Origin::signed(DAVE),
+                    None
+                ));
+                let all_dboxes_count = Pandora::all_dboxes_count();
+                let dbox = Pandora::dbox_by_index(all_dboxes_count - 1);
+                assert_eq!(dbox.status, DboxStatus::Active);
+                assert_ok!(Pandora::open_dbox(Origin::signed(DAVE), dbox.id));
+                let dbox = Pandora::dbox_by_index(all_dboxes_count - 1);
+                assert_eq!(dbox.status, DboxStatus::Opening);
+            }
+
+            for i in 1..6 {
+                <Pandora as OnFinalize<u64>>::on_finalize(i);
+            }
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_bonus, 0);
+            // 2nd round starts
+            assert_eq!(Pandora::timeout(), 50);
+            assert_eq!(Pandora::round_start_dbox(), 4);
+            let dbox = Pandora::dbox_by_index(0);
+            // Upgrade the staled dbox
+            assert_ok!(Pandora::upgrade_dbox(Origin::signed(RAY), dbox.id));
+            let dbox = Pandora::dbox_by_index(0);
+            // Check balance
+            assert_eq!(dbox.value, 35 * 3 - 100);
+            assert_eq!(dbox.status, DboxStatus::Active);
+            // Open the staled dbox
+            assert_ok!(Pandora::open_dbox(Origin::signed(RAY), dbox.id));
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_bonus, 35 * 3 - 100);
+        })
+    }
+
+    #[test]
+    fn it_works_for_draining_bonus() {
+       with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100_000));
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // RAY creates dboxes
+            let count = 1_000;
+            for _i in 0..count {
+                assert_ok!(Pandora::create_dbox_with_invitor(
+                    Origin::signed(RAY),
+                    None
+                ));
+            }
+            assert_eq!(Balances::free_balance(&RAY), 100_000_000 - 100_000 * 1_000);
+            assert_eq!(Pandora::all_dboxes_count(), count);
+            // Each OnFinalize will do 100 operations by default
+            let mut i = 1;
+            loop {
+                <Pandora as OnFinalize<u64>>::on_finalize(i);
+                let bonus_dbox = Pandora::bonus_dbox();
+                let status = Pandora::game_status();
+                println!("bonus_dbox = {} status = {}", bonus_dbox, status as u32);
+                if bonus_dbox == Pandora::all_dboxes_count() {
+                    break;
+                }
+                i += 1;
+            }
+
+            assert_eq!(Pandora::game_status(), Status::Settling);
+            assert_eq!(Pandora::timeout(), 0);
+            assert_eq!(Pandora::bonus_dbox(), 500);
+       })
     }
 }

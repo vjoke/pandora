@@ -72,7 +72,7 @@ pub struct Dbox<Hash, Balance, AccountId> {
     pub version: u64,
     /// The invitor of the dbox
     pub invitor: Option<AccountId>,
-    /// The position when dbox is opened
+    /// The position when dbox is requested to open
     pub open_position: u64,
     /// The per-dbox bonus
     pub bonus_per_dbox: Balance,
@@ -100,13 +100,13 @@ impl Default for PlayerStatus {
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
 pub struct Player<Balance> {
     /// Total bonus received
-    total_bonus: Balance,
+    pub total_bonus: Balance,
     /// Total prize received
-    total_prize: Balance,
+    pub total_prize: Balance,
     /// Total commission received
-    total_commission: Balance,
+    pub total_commission: Balance,
     /// Player status 
-    status: PlayerStatus,
+    pub status: PlayerStatus,
 }
 
 /// The module's configuration trait.
@@ -146,6 +146,7 @@ type BalanceOf<T> = <<T as Trait>::Currency as Currency<<T as system::Trait>::Ac
 //     <<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::NegativeImbalance;
 type DboxOf<T> = Dbox<<T as system::Trait>::Hash, BalanceOf<T>, <T as system::Trait>::AccountId>;
 type PlayerOf<T> = Player<BalanceOf<T>>;
+
 
 decl_event!(
     pub enum Event<T>
@@ -473,7 +474,7 @@ decl_module! {
                     .ok_or("Overflow substracting a dbox from total active dboxes")?;
 
                 AllActiveDboxesCount::put(new_all_active_dboxes_count);
-                Self::on_box_operation(&sender, &dbox)?;
+                Self::on_dbox_operation(&sender, &dbox)?;
             }
             // Trigger events
             if !has_pending {
@@ -514,6 +515,12 @@ decl_module! {
         /// 
         /// @n  the block number
         fn on_finalize(_n: T::BlockNumber) {
+            let game_status = GameStatus::get();
+            // Check status
+            if game_status != Status::Running && game_status != Status::Settling {
+                return;
+            }
+
             let mut ops:i32 = Self::max_ops() as i32;
             // Update game status
             if GameStatus::get() == Status::Running {
@@ -524,8 +531,7 @@ decl_module! {
                 }
                 Timeout::mutate(|n| *n = timeout);
             }
-            // TODO: print debug info
-            // Drain pending bonus
+            // Loop to drain pending bonus
             loop {
                 if ops <= 0 {
                     break;
@@ -536,7 +542,7 @@ decl_module! {
                 }
             }
 
-            // Send money to latest boxes
+            // Loop to send money to latest boxes
             if GameStatus::get() == Status::Settling {
                 loop {
                     if ops <= 0 {
@@ -574,7 +580,7 @@ impl<T: Trait> Module<T> {
             // Make sure invitee does not exists
             ensure!(
                 !<AllPlayers<T>>::exists(invitee),
-                "Invitee sh be new player"
+                "Invitee should be a new player"
             );
             // TODO: add blacklist
         }
@@ -625,7 +631,7 @@ impl<T: Trait> Module<T> {
             .checked_add(1)
             .ok_or("Overflow adding a new dbox to total active dboxes")?;
         ensure!(
-            new_all_active_dboxes_count < Self::max_active_dboxes_count(),
+            new_all_active_dboxes_count <= Self::max_active_dboxes_count(),
             "Exceed max active dboxes limitation"
         );
 
@@ -793,20 +799,19 @@ impl<T: Trait> Module<T> {
     /// Send pending bonus
     /// 
     /// @dbox
-    fn send_pending_bonus(dbox: &mut DboxOf<T>) -> Result {
+    fn send_pending_bonus(dbox: &DboxOf<T>) -> Result {
         let mut prev_dbox = Self::dbox_by_index(dbox.bonus_position);
         if prev_dbox.status == DboxStatus::Active || prev_dbox.status == DboxStatus::Opening {
             prev_dbox.value += dbox.bonus_per_dbox;
-            // FIXME
+            // FIXME:
             if prev_dbox.status == DboxStatus::Opening
-                && prev_dbox.open_position == dbox.create_position
-            {
+                && prev_dbox.open_position == dbox.create_position {
                 Self::do_open_dbox(&mut prev_dbox, true)?;
             }
+            // Update dbox
             <AllDboxesArray<T>>::insert(prev_dbox.create_position, prev_dbox);
         }
 
-        dbox.bonus_position += 1; // Move forward
         Ok(())
     }
 
@@ -881,7 +886,7 @@ impl<T: Trait> Module<T> {
         // From now on, all state transition operations should be infailable
         Self::split_money(&mut new_dbox)?;
         Self::insert_dbox(&sender, random_hash, &new_dbox)?;
-        Self::on_box_operation(&sender, &new_dbox)?;
+        Self::on_dbox_operation(&sender, &new_dbox)?;
         Self::may_insert_new_player(&sender)?;
         // Change nonce value to introduce random value
         Nonce::mutate(|n| *n += 1);
@@ -897,7 +902,7 @@ impl<T: Trait> Module<T> {
         if let Some(player) = Self::owner_of(dbox.id) {
             if !dbox.value.is_zero() {
                 let amount = if double {
-                    dbox.value + dbox.value
+                    dbox.value.saturating_add(dbox.value)
                 } else {
                     dbox.value
                 };
@@ -922,7 +927,7 @@ impl<T: Trait> Module<T> {
     /// 
     /// @player
     /// @dbox 
-    fn on_box_operation(player: &T::AccountId, dbox: &DboxOf<T>) -> Result {
+    fn on_dbox_operation(player: &T::AccountId, dbox: &DboxOf<T>) -> Result {
         // Update latest boxes
         let latest_dboxes_count = Self::latest_dboxes_count();
         let last_dbox_index = Self::last_dbox_index();
@@ -1016,20 +1021,22 @@ impl<T: Trait> Module<T> {
 
         loop {
             if dbox.bonus_position >= dbox.create_position {
-                // update bonus position
+                // Update bonus position
                 BonusDbox::put(bonus_dbox + 1);
                 *ops -= 1;
                 break;
             }
-            // send bonus
-            let _ = Self::send_pending_bonus(&mut dbox);
+            // Send bonus
+            let _ = Self::send_pending_bonus(&dbox);
+            dbox.bonus_position += 1; // Move forward
+
             *ops -= 2;
             // TODO: use config value
             if *ops <= 0 {
                 break;
             }
         }
-        // update dbox
+        // Update dbox
         <AllDboxesArray<T>>::insert(dbox.create_position, dbox);
 
         true
