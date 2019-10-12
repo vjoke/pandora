@@ -215,7 +215,52 @@ mod tests {
     }
 
     #[test]
-    fn it_works_for_opening_dbox() {
+    fn it_works_for_opening_dbox_sync() {
+        with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // Create dboxes
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            <Pandora as OnFinalize<u64>>::on_finalize(1);
+
+            let dbox = Pandora::dbox_by_index(0);
+            let (has_pending, double) = Pandora::get_pending_bonus(&dbox);
+            assert_eq!(has_pending, false);
+            assert_eq!(double, true);
+
+            assert_ok!(Pandora::open_dbox(Origin::signed(RAY), dbox.id));
+            let dbox = Pandora::dbox_by_index(0);
+            assert_eq!(dbox.status, DboxStatus::Opened);
+
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_bonus, (35 + 35/2) * 2);
+
+            let dbox = Pandora::dbox_by_index(2);
+            assert_ok!(Pandora::open_dbox(Origin::signed(RAY), dbox.id));
+            let dbox = Pandora::dbox_by_index(2);
+            assert_eq!(dbox.status, DboxStatus::Opened);
+
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_bonus, (35 + 35/2) * 2);
+
+            let dbox = Pandora::dbox_by_index(1);
+            assert_ok!(Pandora::open_dbox(Origin::signed(RAY), dbox.id));
+            let dbox = Pandora::dbox_by_index(1);
+            assert_eq!(dbox.status, DboxStatus::Opened);
+
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_bonus, (35 + 35/2) * 2 + 35/2*2);
+        })
+    }
+
+    #[test]
+    fn it_works_for_opening_dbox_async() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
             assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
