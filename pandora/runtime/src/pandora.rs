@@ -456,39 +456,18 @@ decl_module! {
         /// @dbox_id    the dbox id
         pub fn open_dbox(origin, dbox_id: T::Hash) -> Result {
             let sender = ensure_signed(origin)?;
-            let _ = Self::ensure_status(vec![Status::Running, Status::Settling, Status::Paused])?;
-            ensure!(<DboxOwner<T>>::exists(dbox_id), "Dbox does not exist");
-            ensure!(Some(sender.clone()) == <DboxOwner<T>>::get(dbox_id), "The owner of the dbox is not the sender");
+            Self::open_dbox_by_id(&sender, dbox_id)
+        }
 
-            let mut dbox = Self::get_dbox_by_id(dbox_id).unwrap();
-            ensure!(dbox.status == DboxStatus::Active, "The status of dbox should be active");
-            // Mark open position
-            dbox.open_position = Self::all_dboxes_count();
-            dbox.status = DboxStatus::Opening;
-            // FIXME: Double checking
-            let (has_pending, double) = Self::get_pending_bonus(&dbox);
-            if has_pending {
-                Self::add_opening_dbox(&dbox)?;
-            } else {
-                Self::do_open_dbox(&mut dbox, double, false)?;
-            }
-            // Save status
-            <AllDboxesArray<T>>::insert(dbox.create_position, &dbox);
-            // Update counter for running game
-            if double {
-                let all_active_dboxes_count = Self::all_active_dboxes_count();
-                let new_all_active_dboxes_count = all_active_dboxes_count.checked_sub(1)
-                    .ok_or("Underflow substracting a dbox from total active dboxes")?;
-
-                AllActiveDboxesCount::put(new_all_active_dboxes_count);
-                Self::on_dbox_operation(&sender, &dbox)?;
-            }
-            // Trigger events
-            if !has_pending {
-                Self::deposit_event(RawEvent::DboxOpening(dbox.id, sender.clone()));
-            }
-
-            Ok(())
+        /// Open dbox by index
+        ///
+        /// @origin
+        /// @index  the index of dbox owned by origin
+        pub fn open_dbox_by_index(origin, index: u64) -> Result {
+            let sender = ensure_signed(origin)?;
+            ensure!(<OwnedDboxesArray<T>>::exists((sender.clone(), index)), "Dbox does not exist");
+            let dbox_id = Self::dbox_of_owner_by_index((sender.clone(), index));
+            Self::open_dbox_by_id(&sender, dbox_id)
         }
 
         /// Upgrade dbox, the following requirements should be met
@@ -497,25 +476,19 @@ decl_module! {
         /// @dbox_id    the dbox id
         pub fn upgrade_dbox(origin, dbox_id: T::Hash) -> Result {
             let sender = ensure_signed(origin)?;
-            let _ = Self::ensure_status(vec![Status::Running])?;
+            Self::upgrade_dbox_by_id(&sender, dbox_id)
+        }
 
-            ensure!(<DboxOwner<T>>::exists(dbox_id), "Dbox does not exist");
-            ensure!(Some(sender.clone()) == <DboxOwner<T>>::get(dbox_id), "The owner of the dbox is not the sender");
+        /// Upgrade dbox by index
+        ///
+        /// @origin
+        /// @dbox_id    the dbox id
+        pub fn upgrade_dbox_by_index(origin, index: u64) -> Result {
+            let sender = ensure_signed(origin)?;
+            ensure!(<OwnedDboxesArray<T>>::exists((sender.clone(), index)), "Dbox does not exist");
+            let dbox_id = Self::dbox_of_owner_by_index((sender.clone(), index));
 
-            let mut dbox = Self::get_dbox_by_id(dbox_id).unwrap();
-            ensure!(dbox.status == DboxStatus::Active, "The status of dbox should be active");
-
-            ensure!(dbox.value >= Self::dbox_unit_price(), "Not enough money");
-
-            // Create another new dbox with money in the old dbox
-            let _ = Self::do_create_dbox(&sender, None, false)?;
-            dbox.value = dbox.value.saturating_sub(Self::dbox_unit_price());
-            // Save status
-            <AllDboxesArray<T>>::insert(dbox.create_position, &dbox);
-            // Trigger event
-            Self::deposit_event(RawEvent::DboxUpgraded(dbox.id, sender.clone()));
-
-            Ok(())
+            Self::upgrade_dbox_by_id(&sender, dbox_id)
         }
 
         /// Callback when a block is finalized
@@ -919,6 +892,53 @@ impl<T: Trait> Module<T> {
         Ok(())
     }
 
+    /// Open dbox by id
+    ///
+    /// @sender the player
+    /// @dbox_id    id of the dbox
+    fn open_dbox_by_id(sender: &T::AccountId, dbox_id: T::Hash) -> Result {
+        let _ = Self::ensure_status(vec![Status::Running, Status::Settling, Status::Paused])?;
+        ensure!(<DboxOwner<T>>::exists(dbox_id), "Dbox does not exist");
+        ensure!(
+            Some(sender.clone()) == <DboxOwner<T>>::get(dbox_id),
+            "The owner of the dbox is not the sender"
+        );
+
+        let mut dbox = Self::get_dbox_by_id(dbox_id).unwrap();
+        ensure!(
+            dbox.status == DboxStatus::Active,
+            "The status of dbox should be active"
+        );
+        // Mark open position
+        dbox.open_position = Self::all_dboxes_count();
+        dbox.status = DboxStatus::Opening;
+        // FIXME: Double checking
+        let (has_pending, double) = Self::get_pending_bonus(&dbox);
+        if has_pending {
+            Self::add_opening_dbox(&dbox)?;
+        } else {
+            Self::do_open_dbox(&mut dbox, double, false)?;
+        }
+        // Save status
+        <AllDboxesArray<T>>::insert(dbox.create_position, &dbox);
+        // Update counter for running game
+        if double {
+            let all_active_dboxes_count = Self::all_active_dboxes_count();
+            let new_all_active_dboxes_count = all_active_dboxes_count
+                .checked_sub(1)
+                .ok_or("Underflow substracting a dbox from total active dboxes")?;
+
+            AllActiveDboxesCount::put(new_all_active_dboxes_count);
+            Self::on_dbox_operation(&sender, &dbox)?;
+        }
+        // Trigger events
+        if !has_pending {
+            Self::deposit_event(RawEvent::DboxOpening(dbox.id, sender.clone()));
+        }
+
+        Ok(())
+    }
+
     /// Remove opening dbox from array
     ///
     /// @dbox_position the create position of dbox
@@ -940,8 +960,8 @@ impl<T: Trait> Module<T> {
             AllOpeningDboxesArray::insert(index, temp_position);
             AllOpeningDboxesArray::insert(largest_index, member_to_remove);
 
-            AllOpeningDboxesMap::insert(temp_position, index); 
-            AllOpeningDboxesMap::insert(create_position, largest_index); 
+            AllOpeningDboxesMap::insert(temp_position, index);
+            AllOpeningDboxesMap::insert(create_position, largest_index);
         }
         // Pop
         AllOpeningDboxesMap::remove(create_position);
@@ -983,6 +1003,32 @@ impl<T: Trait> Module<T> {
         dbox.value = Zero::zero();
         dbox.status = DboxStatus::Opened;
         Self::deposit_event(RawEvent::DboxOpened(dbox.id));
+
+        Ok(())
+    }
+
+    /// Upgrade dbox by id
+    /// 
+    /// @sender the player
+    /// @dbox_id id of the dbox
+    fn upgrade_dbox_by_id(sender: &T::AccountId, dbox_id: T::Hash) -> Result {
+        let _ = Self::ensure_status(vec![Status::Running])?;
+
+        ensure!(<DboxOwner<T>>::exists(dbox_id), "Dbox does not exist");
+        ensure!(Some(sender.clone()) == <DboxOwner<T>>::get(dbox_id), "The owner of the dbox is not the sender");
+
+        let mut dbox = Self::get_dbox_by_id(dbox_id).unwrap();
+        ensure!(dbox.status == DboxStatus::Active, "The status of dbox should be active");
+
+        ensure!(dbox.value >= Self::dbox_unit_price(), "Not enough money");
+
+        // Create another new dbox with money in the old dbox
+        let _ = Self::do_create_dbox(&sender, None, false)?;
+        dbox.value = dbox.value.saturating_sub(Self::dbox_unit_price());
+        // Save status
+        <AllDboxesArray<T>>::insert(dbox.create_position, &dbox);
+        // Trigger event
+        Self::deposit_event(RawEvent::DboxUpgraded(dbox.id, sender.clone()));
 
         Ok(())
     }
@@ -1108,13 +1154,13 @@ impl<T: Trait> Module<T> {
                 return false;
             }
             // Get the last opening dbox for performance
-            let create_position = AllOpeningDboxesArray::get(all_opening_dboxes_count-1);
+            let create_position = AllOpeningDboxesArray::get(all_opening_dboxes_count - 1);
             // Sanity checking?
             let mut dbox = Self::dbox_by_index(create_position);
             assert!(
                 dbox.status == DboxStatus::Opening
                     && dbox.open_position == Self::all_dboxes_count(),
-                    "Status should be opening"
+                "Status should be opening"
             );
             let _ = Self::do_open_dbox(&mut dbox, true, true);
             // Update dbox
