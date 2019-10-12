@@ -209,6 +209,78 @@ mod tests {
                 "balance too low to send value"
             );
             assert_eq!(Pandora::all_dboxes_count(), 1);
+            // Should fail to create dbox with system accounts
+            assert_err!(Pandora::create_dbox_with_invitor(Origin::signed(TEAM_ACCOUNT), None), "System account is not allowed");
+        })
+    }
+
+    #[test]
+    fn it_works_for_opening_dbox() {
+        with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // Tries to open non-existed dbox
+            assert_err!(Pandora::open_dbox(Origin::signed(RAY), H256::random()), "Dbox does not exist");
+            // Create dboxes
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+
+            let dbox = Pandora::dbox_by_index(0);
+            println!("dbox id={}", dbox.id);
+            let (has_pending, double) = Pandora::get_pending_bonus(&dbox);
+            assert_eq!(has_pending, true);
+            assert_eq!(double, true);
+
+            assert_ok!(Pandora::open_dbox(Origin::signed(RAY), dbox.id));
+            let dbox = Pandora::dbox_by_index(0);
+            assert_eq!(dbox.status, DboxStatus::Opening);
+
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_bonus, 0);
+
+            for i in 1..6 {
+                let bonus_dbox = Pandora::bonus_dbox();
+                let status = Pandora::game_status();
+                let dbox = Pandora::dbox_by_index(2); 
+                println!("bonus_dbox = {} status = {} dbox.bonus_position = {}", bonus_dbox, status as u32, dbox.bonus_position);
+                <Pandora as OnFinalize<u64>>::on_finalize(i);
+            }
+            assert_eq!(Pandora::round_start_dbox(), 3);
+            let dbox = Pandora::dbox_by_index(0);
+            assert_eq!(dbox.status, DboxStatus::Opened);
+
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_bonus, (35 + 35/2)*2);
+
+            let dbox = Pandora::dbox_by_index(0);
+            println!("dbox id={}", dbox.id);
+            assert_err!(Pandora::open_dbox(Origin::signed(RAY), dbox.id), "The status of dbox should be active");
+            
+            let dbox = Pandora::dbox_by_index(1);
+            println!("dbox id={}", dbox.id);
+            assert_ok!(Pandora::open_dbox(Origin::signed(RAY), dbox.id));
+
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_bonus, 104 + 35/2);
+
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+
+            let dbox = Pandora::dbox_by_index(2);
+            println!("dbox id={}", dbox.id);
+            assert_ok!(Pandora::open_dbox(Origin::signed(RAY), dbox.id));
+
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_bonus, 121);
+
+            <Pandora as OnFinalize<u64>>::on_finalize(10);
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_bonus, 121); 
+
         })
     }
 
@@ -498,9 +570,33 @@ mod tests {
                 i += 1;
             }
 
-            assert_eq!(Pandora::game_status(), Status::Settling);
-            assert_eq!(Pandora::timeout(), 0);
-            assert_eq!(Pandora::bonus_dbox(), 500);
+            assert_eq!(Pandora::game_status(), Status::Running);
+            assert_eq!(Pandora::bonus_dbox(), 1000);
        })
     }
+
+     #[test]
+    fn it_works_for_inviting() {
+        with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_eq!(Pandora::game_status(), Status::Inited);
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // Ray creates a dbox
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            let dbox = Pandora::dbox_by_index(0);
+            // Bob tries to create a dbox with non-existed player
+            assert_err!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), Some(EVE)), "Invitor should be the player");
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), Some(RAY)));
+            let player = Pandora::player(RAY);
+            assert_eq!(player.total_commission, 5);
+            // Bob tries to create a dbox with himself as invitor
+            assert_err!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), Some(BOB)), "Invitee should be a new player");
+        })
+    }
+
+
 }
