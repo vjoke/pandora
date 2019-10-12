@@ -194,6 +194,8 @@ decl_storage! {
         Timeout get(timeout): u32;
         /// The unit price of dbox
         DboxUnitPrice get(dbox_unit_price): BalanceOf<T>;
+        /// The round number
+        RoundCount get(round_count): u64;
         // The start position of current round
         RoundStartDbox get(round_start_dbox): u64;
         // The bonus dbox position of current round
@@ -298,6 +300,7 @@ decl_module! {
             GameStatus::put(Status::Inited);
             Timeout::put(T::Expiration::get());
             <DboxUnitPrice<T>>::put(dbox_unit_price);
+            RoundCount::put(1);
             RoundStartDbox::put(0);
             BonusDbox::put(0);
             <AveragePrize<T>>::put(<BalanceOf<T>>::zero());
@@ -1169,6 +1172,7 @@ impl<T: Trait> Module<T> {
         // reset round positions
         let all_dboxes_count = Self::all_dboxes_count();
 
+        RoundCount::mutate(|n| *n += 1);
         RoundStartDbox::put(all_dboxes_count);
         BonusDbox::put(all_dboxes_count);
         AllActiveDboxesCount::put(0);

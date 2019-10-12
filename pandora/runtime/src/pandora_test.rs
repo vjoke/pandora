@@ -77,7 +77,7 @@ mod tests {
 
     parameter_types! {
         pub const ExpirationValue: u32 = 50;
-        pub const MaxLatestValue: u64 = 10;
+        pub const MaxLatestValue: u64 = 5;
         pub const MinUnitPrice: Balance = 0; // FIXME:
         pub const MaxUnitPrice: Balance = 3500000000; // FIXME:
         pub const DboxRatio: u32 = 35;
@@ -267,7 +267,7 @@ mod tests {
 
             let player = Pandora::player(RAY);
             assert_eq!(player.total_bonus, 104 + 35/2);
-
+            // 3th dbox
             assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
 
             let dbox = Pandora::dbox_by_index(2);
@@ -278,9 +278,25 @@ mod tests {
             assert_eq!(player.total_bonus, 121);
 
             <Pandora as OnFinalize<u64>>::on_finalize(10);
+            assert_eq!(Pandora::all_opening_doxes_count(), 0);
             let player = Pandora::player(RAY);
             assert_eq!(player.total_bonus, 121); 
+            // 4th dbox
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), Some(RAY)));
+            assert_err!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), Some(RAY)), "Invitee should be a new player");
+            // 5th dbox
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), None));
 
+            let dbox = Pandora::dbox_by_index(4);
+            assert_ok!(Pandora::open_dbox(Origin::signed(BOB), dbox.id));
+            let dbox = Pandora::dbox_by_index(4);
+            assert_eq!(dbox.status, DboxStatus::Opening);
+            
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), None));
+            <Pandora as OnFinalize<u64>>::on_finalize(11); 
+
+            let dbox = Pandora::dbox_by_index(4);
+            assert_eq!(dbox.status, DboxStatus::Opened);
         })
     }
 
@@ -575,7 +591,7 @@ mod tests {
        })
     }
 
-     #[test]
+    #[test]
     fn it_works_for_inviting() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
@@ -598,5 +614,214 @@ mod tests {
         })
     }
 
+    #[test]
+    fn it_works_for_normal_prizes() {
+        with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_eq!(Pandora::game_status(), Status::Inited);
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // create dboxes
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(DAVE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(NICOLE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+
+            assert_eq!(Pandora::balance(&POOL_ACCOUNT), 10*4);
+            for i in 1..6 {
+               <Pandora as OnFinalize<u64>>::on_finalize(i); 
+            }
+            // Next round
+            assert_eq!(Pandora::timeout(), 50);
+            assert_eq!(Pandora::round_count(), 2);
+            assert_eq!(Pandora::round_start_dbox(), 4);
+
+            let player = Pandora::player(&BOB);
+            assert_eq!(player.total_prize, 10);
+
+            let player = Pandora::player(&DAVE);
+            assert_eq!(player.total_prize, 10);
+            
+            let player = Pandora::player(&RAY);
+            assert_eq!(player.total_prize, 10 + 4*5);
+
+            assert_eq!(Pandora::latest_dboxes_count(), 0);
+            assert_eq!(Pandora::average_prize(), 0);
+        }) 
+    }
+
+    #[test]
+    fn it_works_for_latest_prizes() {
+        with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_eq!(Pandora::game_status(), Status::Inited);
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // create dboxes above max latest value
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(DAVE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(EVE), None));
+            // The latest MaxLatest players will get prize 
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(NICOLE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(FERDIE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(CHARLIE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(DJANGO), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+
+            assert_eq!(Pandora::balance(&POOL_ACCOUNT), 10*8);
+            for i in 1..6 {
+               <Pandora as OnFinalize<u64>>::on_finalize(i); 
+            }
+            // Next round
+            assert_eq!(Pandora::timeout(), 50);
+            assert_eq!(Pandora::round_count(), 2);
+            assert_eq!(Pandora::round_start_dbox(), 8);
+
+            let player = Pandora::player(&BOB);
+            assert_eq!(player.total_prize, 0);
+
+            let player = Pandora::player(&DAVE);
+            assert_eq!(player.total_prize, 0);
+
+            let player = Pandora::player(&EVE);
+            assert_eq!(player.total_prize, 0);
+
+            let player = Pandora::player(&NICOLE);
+            assert_eq!(player.total_prize, 16);
+            
+            let player = Pandora::player(&RAY);
+            assert_eq!(player.total_prize, 16 + 8*5);
+
+            assert_eq!(Pandora::latest_dboxes_count(), 0);
+            assert_eq!(Pandora::average_prize(), 0);
+        }) 
+    }
+
+    #[test]
+    fn it_works_for_duplicate_prizes() {
+        with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_eq!(Pandora::game_status(), Status::Inited);
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // create dboxes above max latest value
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(BOB), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(DAVE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(EVE), None));
+            // The latest MaxLatest players will get prize 
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(NICOLE), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+
+            assert_eq!(Pandora::balance(&POOL_ACCOUNT), 10*8);
+            for i in 1..6 {
+               <Pandora as OnFinalize<u64>>::on_finalize(i); 
+            }
+            // Next round
+            assert_eq!(Pandora::timeout(), 50);
+            assert_eq!(Pandora::round_count(), 2);
+            assert_eq!(Pandora::round_start_dbox(), 8);
+
+            let player = Pandora::player(&BOB);
+            assert_eq!(player.total_prize, 0);
+
+            let player = Pandora::player(&DAVE);
+            assert_eq!(player.total_prize, 0);
+
+            let player = Pandora::player(&EVE);
+            assert_eq!(player.total_prize, 0);
+
+            let player = Pandora::player(&NICOLE);
+            assert_eq!(player.total_prize, 16);
+            
+            let player = Pandora::player(&RAY);
+            assert_eq!(player.total_prize, 16*4 + 8*5);
+
+            assert_eq!(Pandora::latest_dboxes_count(), 0);
+            assert_eq!(Pandora::average_prize(), 0);
+        }) 
+    }
+
+    #[test]
+    fn it_works_for_single_player_prizes() {
+        with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_eq!(Pandora::game_status(), Status::Inited);
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+            // create a single dbox
+            assert_ok!(Pandora::create_dbox_with_invitor(Origin::signed(RAY), None));
+
+            assert_eq!(Pandora::balance(&LAST_PLAYER_ACCOUNT), 5);
+            assert_eq!(Pandora::balance(&POOL_ACCOUNT), 10*1);
+
+            for i in 1..6 {
+               <Pandora as OnFinalize<u64>>::on_finalize(i); 
+            }
+            // Next round
+            assert_eq!(Pandora::timeout(), 50);
+            assert_eq!(Pandora::round_count(), 2);
+            assert_eq!(Pandora::round_start_dbox(), 1);
+            
+            let player = Pandora::player(&RAY);
+            assert_eq!(player.total_prize, 10 + 5);
+
+            assert_eq!(Pandora::latest_dboxes_count(), 0);
+            assert_eq!(Pandora::average_prize(), 0);
+            assert_eq!(Pandora::balance(&LAST_PLAYER_ACCOUNT), 0);
+        }) 
+    }
+
+    #[test]
+    fn it_works_for_setting_status() {
+        with_externalities(&mut new_test_ext(), || {
+            // Init the game
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_eq!(Pandora::game_status(), Status::Inited);
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ));
+
+            assert_err!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Inited as u8
+            ), "Invalid new status");
+            
+            assert_err!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Running as u8
+            ), "New status should be different from current status");
+
+            assert_err!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                100
+            ), "Invalid status value"); 
+
+            assert_err!(Pandora::set_status(
+                Origin::signed(RAY),
+                100
+            ), "Not authorized"); 
+
+            assert_ok!(Pandora::set_status(
+                Origin::signed(ADMIN_ACCOUT),
+                Status::Stopped as u8
+            ));
+        }) 
+    }
 
 }
