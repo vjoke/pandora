@@ -986,7 +986,7 @@ impl<T: Trait> Module<T> {
                 } else {
                     dbox.value
                 };
-
+                // FIXME: we do not care if the transfer is ok or not
                 let _ = T::Currency::transfer(&Self::cashier_account(), &player, amount);
                 let _ = Self::add_bonus(&player, amount)?;
 
