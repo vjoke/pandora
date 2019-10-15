@@ -1,8 +1,7 @@
 /// tests for this module
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::pandora::*;
+    use crate::*;
 
     use primitives::{Blake2Hasher, H256};
     use runtime_io::with_externalities;

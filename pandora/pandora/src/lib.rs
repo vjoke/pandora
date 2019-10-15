@@ -1,12 +1,19 @@
 //! # Pandora
 //!
 //! `pandora` is a module for gaming, we use this module to IGO(Initial Gaming Offering) our tokens
+//! This can be compiled with `#[no_std]`, ready for Wasm
+#![cfg_attr(not(feature = "std"), no_std)]
+#![recursion_limit="256"]
+
+// mod pandora;
+#[cfg(test)]
+mod pandora_test;
 
 use support::{
     decl_event, decl_module, decl_storage,
     dispatch::Result,
     ensure,
-    traits::{Currency, Get, Imbalance, ReservableCurrency},
+    traits::{Currency, Get, ReservableCurrency},
     StorageMap, StorageValue,
 };
 
