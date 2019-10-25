@@ -62,9 +62,7 @@ pub struct OracleInfo<Balance> {
 
 /// The job struct
 #[derive(Encode, Decode, Default, Clone, PartialEq)]
-pub struct Job<Hash, BlockNumber, Balance, AccountId> {
-    /// The hash of the job
-    pub id: Hash,
+pub struct Job<BlockNumber, Balance, AccountId> {
     /// The requestor of the job
     pub from: AccountId,
     /// The metadata for this job, including business type etc
@@ -91,7 +89,6 @@ pub type BalanceOf<T> =
 
 type LedgerOf<T> = Ledger<BalanceOf<T>, <T as system::Trait>::BlockNumber>;
 type JobOf<T> = Job<
-    <T as system::Trait>::Hash,
     <T as system::Trait>::BlockNumber,
     BalanceOf<T>,
     <T as system::Trait>::AccountId,
@@ -101,7 +98,7 @@ const LOCKED_ID: LockIdentifier = *b"oracle  ";
 
 pub trait Trait: balances::Trait {
     /// The maximum delay value for job execution
-    type Timeout: Get<Self::BlockNumber>;
+    type MaxTimeout: Get<Self::BlockNumber>;
     /// The amount of fee that should be paid to each oracle during each reporting cycle.
     type OracleFee: Get<BalanceOf<Self>>;
     /// The amount that'll be slashed if one oracle missed its reporting window.
@@ -235,7 +232,7 @@ decl_module! {
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
         fn deposit_event() = default;
 
-        const Timeout: T::BlockNumber = T::Timeout::get();
+        const MaxTimeout: T::BlockNumber = T::MaxTimeout::get();
         const OracleFee: BalanceOf<T> = T::OracleFee::get();
         const MissReportSlash: BalanceOf<T> = T::MissReportSlash::get();
         const MinStaking: BalanceOf<T> = T::MinStaking::get();
@@ -312,6 +309,7 @@ decl_module! {
                 Self::elect_oracles();
             }
             Self::release_due_locked_funds(block_number);
+            Self::release_expired_jobs(block_number);
             Self::cleanup();
         }
 
@@ -357,7 +355,6 @@ impl<T: Trait> Module<T> {
         let mut chosen_oracles = chosen_oracles.to_vec();
         // FIXME: is it necessary?
         // chosen_oracles.sort();
-
         let new_oracles: Vec<T::AccountId> = chosen_oracles
             .clone()
             .into_iter()
@@ -423,6 +420,13 @@ impl<T: Trait> Module<T> {
         <Ledgers<T>>::insert(who, ledger);
 
         Self::deposit_event(RawEvent::OracleStakeReleased(who.clone(), released_funds));
+    }
+
+    /// Release expired jobs
+    /// 
+    /// @current_height the height of chain
+    fn release_expired_jobs(current_height: T::BlockNumber) {
+        // TODO:
     }
 
     /// Cleanup dust unqualified members
@@ -708,8 +712,8 @@ impl<T: Trait> OracleMixedIn<T> for Module<T> {
         );
         // Check timeout value TODO: use config value?
         ensure!(
-            timeout > T::BlockNumber::min_value() && timeout <= T::Timeout::get(),
-            "Invalid timeout range, should be (0, 10]"
+            timeout > T::BlockNumber::min_value() && timeout <= T::MaxTimeout::get(),
+            "Invalid timeout range, should be (0, MaxTimeout]"
         );
         // Check if oracle exists or not
         ensure!(Self::oracles().contains(oracle), "Should be a valid oracle");
@@ -727,7 +731,6 @@ impl<T: Trait> OracleMixedIn<T> for Module<T> {
         T::Currency::transfer(&from, &Self::cashier_account(), T::OracleFee::get())?;
 
         let job = JobOf::<T> {
-            id: hash,
             from: from.clone(),
             meta: meta.clone(),
             created_at: created_at,
@@ -761,10 +764,11 @@ impl<T: Trait> OracleMixedIn<T> for Module<T> {
     fn cancel_request(from: &T::AccountId, id: T::Hash) -> Result {
         ensure!(<Jobs<T>>::exists(id), "Job does not exist");
         let job = Self::job(id);
-        ensure!(job.from == from.clone(), "Not owner of the job");
+        ensure!(job.from == from.clone(), "Not authorized");
         let block_number = Self::block_number();
-        ensure!(job.expired_at >= block_number, "Job already expired");
-
+        ensure!(job.expired_at > block_number, "Job already expired");
+        // Take back oracle fee 
+        T::Currency::transfer(&Self::cashier_account(), &from, T::OracleFee::get())?;
         // Update and send event notification
         let mut info = Self::oracle_info(job.oracle.clone());
         info.total_jobs = info.total_jobs.saturating_sub(1);
@@ -783,20 +787,18 @@ impl<T: Trait> OracleMixedIn<T> for Module<T> {
     fn on_request_fulfilled(oracle: &T::AccountId, id: T::Hash) -> Result {
         ensure!(<Jobs<T>>::exists(id), "Job does not exist");
         let job = Self::job(id);
-        ensure!(job.oracle == oracle.clone(), "Not the same oracle");
+        ensure!(job.oracle == oracle.clone(), "Not authorized");
 
         let block_number = Self::block_number();
         let mut info = Self::oracle_info(oracle.clone());
-        if block_number < job.expired_at {
-            info.total_witnessed_jobs += 1;
-            // TODO: delay transfer?
-            info.total_reward = info.total_reward.saturating_add(job.reward);
-            info.withdrawable_reward = info.withdrawable_reward.saturating_add(job.reward);
-        } else {
-            // Job has already expired
-            info.total_missed_jobs += 1;
-            // TODO: slash oracle?
-        }
+
+        ensure!(block_number < job.expired_at, "Job already expired");
+
+        info.total_witnessed_jobs += 1;
+        // TODO: delay transfer?
+        info.total_reward = info.total_reward.saturating_add(job.reward);
+        info.withdrawable_reward = info.withdrawable_reward.saturating_add(job.reward);
+       
         // Update send event notification
         <OracleInfos<T>>::insert(oracle.clone(), info);
         <Jobs<T>>::remove(id);

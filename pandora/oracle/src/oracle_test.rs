@@ -91,7 +91,7 @@ mod tests {
     // }
 
     parameter_types! {
-        pub const Timeout: u64 = 3;
+        pub const MaxTimeout: u64 = 3;
 
         pub const OracleFee: Balance = 10;
         pub const MissReportSlash: Balance = 1;
@@ -105,7 +105,7 @@ mod tests {
     }
 
     impl Trait for Test {
-        type Timeout = Timeout;
+        type MaxTimeout = MaxTimeout;
         type OracleFee = OracleFee;
         type MissReportSlash = MissReportSlash;
         type MinStaking = MinStaking;
@@ -282,7 +282,7 @@ mod tests {
     fn it_works_for_electing_oracle() {
         with_externalities(&mut new_test_ext(), || {
             System::set_block_number(1);
-            assert_ok!(Oracle::bond(Origin::signed(ALICE), 100));
+            assert_ok!(Oracle::bond(Origin::signed(ALICE), 150));
             assert_ok!(Oracle::bond(Origin::signed(BOB), 200));
             assert_ok!(Oracle::bond(Origin::signed(DAVE), 300));
             assert_ok!(Oracle::bond(Origin::signed(CHARLIE), 100));
@@ -389,6 +389,38 @@ mod tests {
             assert_eq!(candidates, [ALICE, BOB, DAVE, CHARLIE]);
 
             <Oracle as OnFinalize<u64>>::on_finalize(10);
+            // The length of max meta data should be <= 1024
+            let result = Oracle::create_request(
+                &RAY,
+                &vec![1;1025],
+                3,
+                &ALICE
+            );
+            assert_err!(result, "The length of meta should be equal or less than 1024");
+            // The timeout should be valid
+            let result = Oracle::create_request(
+                &RAY,
+                &vec![1;100],
+                0,
+                &ALICE
+            );
+            assert_err!(result, "Invalid timeout range, should be (0, MaxTimeout]");
+            
+            let result = Oracle::create_request(
+                &RAY,
+                &vec![1;100],
+                10,
+                &ALICE
+            );
+            assert_err!(result, "Invalid timeout range, should be (0, MaxTimeout]");
+            // The account requested should be an oracle
+            let result = Oracle::create_request(
+                &RAY,
+                &vec![1;100],
+                3,
+                &NICOLE
+            );
+            assert_err!(result, "Should be a valid oracle");
 
             let result = Oracle::create_request(
                 &RAY,
@@ -398,8 +430,93 @@ mod tests {
             );
 
             assert_eq!(result.is_ok(), true);
-            println!("resutl id is {}", result.unwrap());
+            println!("result id is {}", result.unwrap());
             assert_eq!(Nonce::get(), 1);
         }) 
     }
+
+    #[test]
+    fn it_works_for_cancelling_request() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+            assert_ok!(Oracle::bond(Origin::signed(ALICE), 120));
+            assert_ok!(Oracle::bond(Origin::signed(BOB), 200));
+            assert_ok!(Oracle::bond(Origin::signed(DAVE), 300));
+            assert_ok!(Oracle::bond(Origin::signed(CHARLIE), 100));
+
+            let candidates = Oracle::candidates();
+            assert_eq!(candidates, [ALICE, BOB, DAVE, CHARLIE]);
+
+            <Oracle as OnFinalize<u64>>::on_finalize(10);
+            // Cancel non-existed request should fail
+            assert_err!(Oracle::cancel_request(&RAY, H256::random()), "Job does not exist");
+            // Create a normal request 
+            let result = Oracle::create_request(
+                &RAY,
+                &vec![1,2,3],
+                3,
+                &ALICE
+            );
+            // Result should be ok
+            assert_eq!(result.is_ok(), true);
+            println!("result id is {}", result.unwrap());
+            let info = Oracle::oracle_info(ALICE);
+            assert_eq!(info.total_jobs, 1);
+            // Cancelling other's request should fail
+            assert_err!(Oracle::cancel_request(&DAVE, result.unwrap()), "Not authorized");
+            // Cancelling expired request should fail
+            System::set_block_number(4);
+            assert_err!(Oracle::cancel_request(&RAY, result.unwrap()), "Job already expired");
+            // Normal cancelling should be ok 
+            System::set_block_number(2); 
+            assert_ok!(Oracle::cancel_request(&RAY, result.unwrap()));
+
+            let info = Oracle::oracle_info(ALICE);
+            assert_eq!(info.total_jobs, 0);
+        }) 
+    }
+
+    #[test]
+    fn it_works_for_fulfilling_request() {
+        with_externalities(&mut new_test_ext(), || {
+            System::set_block_number(1);
+            assert_ok!(Oracle::bond(Origin::signed(ALICE), 120));
+            assert_ok!(Oracle::bond(Origin::signed(BOB), 200));
+            assert_ok!(Oracle::bond(Origin::signed(DAVE), 300));
+            assert_ok!(Oracle::bond(Origin::signed(CHARLIE), 100));
+
+            let candidates = Oracle::candidates();
+            assert_eq!(candidates, [ALICE, BOB, DAVE, CHARLIE]);
+
+            <Oracle as OnFinalize<u64>>::on_finalize(10);
+            // Cancel non-existed request should fail
+            assert_err!(Oracle::cancel_request(&RAY, H256::random()), "Job does not exist");
+            // Create a normal request 
+            let result = Oracle::create_request(
+                &RAY,
+                &vec![1,2,3],
+                3,
+                &ALICE
+            );
+            // Result should be ok
+            assert_eq!(result.is_ok(), true);
+            println!("result id is {}", result.unwrap());
+            let info = Oracle::oracle_info(ALICE);
+            assert_eq!(info.total_jobs, 1);
+            assert_eq!(info.total_witnessed_jobs, 0);
+
+            // Fulfilling other's request should fail
+            assert_err!(Oracle::on_request_fulfilled(&DAVE, result.unwrap()), "Not authorized");
+            // Fulfilling expired request should fail
+            System::set_block_number(4);
+            assert_err!(Oracle::on_request_fulfilled(&ALICE, result.unwrap()), "Job already expired");
+            // Normal operation should be ok 
+            System::set_block_number(2); 
+            assert_ok!(Oracle::on_request_fulfilled(&ALICE, result.unwrap()));
+
+            let info = Oracle::oracle_info(ALICE);
+            assert_eq!(info.total_jobs, 1);
+            assert_eq!(info.total_witnessed_jobs, 1);
+        }) 
+    } 
 }
