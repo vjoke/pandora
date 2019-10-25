@@ -1,0 +1,203 @@
+/// tests for this module
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::*;
+
+    use primitives::u32_trait::{_1, _2};
+    use primitives::{Blake2Hasher, H256};
+    use runtime_io::with_externalities;
+    use sr_primitives::weights::Weight;
+    use sr_primitives::Perbill;
+    use sr_primitives::{
+        testing::Header,
+        traits::{BlakeTwo256, ConvertInto, IdentityLookup, OnFinalize},
+    };
+    use support::{assert_err, assert_ok, impl_outer_origin, parameter_types};
+
+    impl_outer_origin! {
+        pub enum Origin for Test {}
+    }
+
+    // For testing the module, we construct most of a mock runtime. This means
+    // first constructing a configuration type (`Test`) which `impl`s each of the
+    // configuration traits of modules we want to use.
+    #[derive(Clone, Eq, PartialEq)]
+    pub struct Test;
+    parameter_types! {
+        pub const BlockHashCount: u64 = 250;
+        pub const MaximumBlockWeight: Weight = 1024;
+        pub const MaximumBlockLength: u32 = 2 * 1024;
+        pub const AvailableBlockRatio: Perbill = Perbill::from_percent(75);
+    }
+    impl system::Trait for Test {
+        type Origin = Origin;
+        type Call = ();
+        type Index = u64;
+        type BlockNumber = u64;
+        type Hash = H256;
+        type Hashing = BlakeTwo256;
+        type AccountId = u64;
+        type Lookup = IdentityLookup<Self::AccountId>;
+        type Header = Header;
+        type WeightMultiplierUpdate = ();
+        type Event = ();
+        type BlockHashCount = BlockHashCount;
+        type MaximumBlockWeight = MaximumBlockWeight;
+        type MaximumBlockLength = MaximumBlockLength;
+        type AvailableBlockRatio = AvailableBlockRatio;
+        type Version = ();
+    }
+
+    type Balance = u128;
+    type AccountId = u64;
+
+    parameter_types! {
+        pub const ExistentialDeposit: u128 = 500;
+        pub const TransferFee: u128 = 0;
+        pub const CreationFee: u128 = 0;
+        pub const TransactionBaseFee: u128 = 0;
+        pub const TransactionByteFee: u128 = 1;
+    }
+
+    impl balances::Trait for Test {
+        type Balance = Balance;
+        type OnFreeBalanceZero = ();
+        type OnNewAccount = ();
+        type Event = ();
+        type TransactionPayment = ();
+        type DustRemoval = ();
+        type TransferPayment = ();
+
+        type ExistentialDeposit = ExistentialDeposit;
+        type TransferFee = TransferFee;
+        type CreationFee = CreationFee;
+        type TransactionBaseFee = TransactionBaseFee;
+        type TransactionByteFee = TransactionByteFee;
+        type WeightToFee = ConvertInto;
+    }
+
+    type OracleCollective = collective::Instance1;
+    impl collective::Trait<OracleCollective> for Test {
+        type Origin = Origin;
+        type Proposal = Call;
+        type Event = ();
+    }
+
+    // impl collective::Trait for Test {
+    //     type Origin = Origin;
+    //     type Proposal = Call;
+    //     type Event = ();
+    // }
+
+    parameter_types! {
+        pub const Timeout: u64 = 3;
+
+        pub const OracleFee: Balance = 10;
+        pub const MissReportSlash: Balance = 1;
+        pub const MinStaking: Balance = 100;
+
+        pub const Count: u16 = 3;
+
+        pub const ReportInteval: u64 = 10;
+        pub const ElectionEra: u64 = 10;
+        pub const LockedDuration: u64 = 1000;
+    }
+
+    impl Trait for Test {
+        // type Event = ();
+        // type Expiration = ExpirationValue;
+        // type MaxLatest = MaxLatestValue;
+        // type MinUnitPrice = MinUnitPrice;
+        // type MaxUnitPrice = MaxUnitPrice;
+        // type DboxRatio = DboxRatio;
+        // type ReserveRatio = ReserveRatio;
+        // type PoolRatio = PoolRatio;
+        // type LastPlayerRatio = LastPlayerRatio;
+        // type TeamRatio = TeamRatio;
+        // type OperatorRatio = OperatorRatio;
+        // type InvitorRatio = InvitorRatio;
+        // type Currency = Balances;
+
+        type Timeout = Timeout;
+        type OracleFee = OracleFee;
+        type MissReportSlash = MissReportSlash;
+        type MinStaking = MinStaking;
+
+        type MaliciousSlashOrigin = collective::EnsureProportionMoreThan<_1, _2, AccountId, OracleCollective>;
+        type Count = Count;
+        type ReportInteval = ReportInteval;
+        type ElectionEra = ElectionEra;
+        type LockedDuration = LockedDuration;
+        type ChangeMembers = ();
+        // type ChangeMembers = OracleMembers;
+        type Event = ();
+        type Currency = Balances;
+    }
+
+    type Balances = balances::Module<Test>;
+    type Oracle = Module<Test>;
+
+    // Define previledged acounts
+    const ADMIN_ACCOUT: u64 = 10000;
+    const CASHIER_ACCOUNT: u64 = 10001;
+    const RESERVE_ACCOUNT: u64 = 10002;
+    const POOL_ACCOUNT: u64 = 10003;
+    const LAST_PLAYER_ACCOUNT: u64 = 10004;
+    const TEAM_ACCOUNT: u64 = 10005;
+    const OPERATOR_ACCOUNT: u64 = 10006;
+
+    // Define general player account
+    const ALICE: u64 = 100;
+    const BOB: u64 = 101;
+    const DAVE: u64 = 102;
+    const EVE: u64 = 103;
+    const FERDIE: u64 = 104;
+    const CHARLIE: u64 = 105;
+    const DJANGO: u64 = 106;
+    const NICOLE: u64 = 107;
+    const RAY: u64 = 108;
+
+    // This function basically just builds a genesis storage key/value store according to
+    // our desired mockup.
+    fn new_test_ext() -> runtime_io::TestExternalities<Blake2Hasher> {
+        let mut t = system::GenesisConfig::default()
+            .build_storage::<Test>()
+            .unwrap();
+        // Add config for balances
+        balances::GenesisConfig::<Test> {
+            balances: vec![
+                (ADMIN_ACCOUT, 600_000),
+                (CASHIER_ACCOUNT, 100_000),
+                (TEAM_ACCOUNT, 500_000),
+                (ALICE, 100_000),
+                (BOB, 100_000),
+                (DAVE, 100_000),
+                (EVE, 100_000),
+                (FERDIE, 100_000),
+                (CHARLIE, 100_000),
+                (DJANGO, 100_000),
+                (NICOLE, 100_000),
+                (RAY, 100_000_000),
+            ],
+            vesting: vec![],
+        }
+        .assimilate_storage(&mut t)
+        .unwrap();
+        // Add config for oracle 
+        GenesisConfig::<Test> {
+            cashier_account: CASHIER_ACCOUNT,
+        }
+        .assimilate_storage(&mut t)
+        .unwrap();
+
+        t.into()
+    }
+
+    #[test]
+    fn it_works_for_bonding() {
+        with_externalities(&mut new_test_ext(), || {
+            // TODO: 
+        })
+    } 
+}

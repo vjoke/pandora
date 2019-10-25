@@ -28,7 +28,8 @@ client = { package = "substrate-client", path = "../../core/client", default_fea
 offchain-primitives = { package = "substrate-offchain-primitives", path = "../../core/offchain/primitives", default-features = false }
 
 pandora = { package = "pandora-module", path = "../pandora", default_features = false }
-# price = { path = "../price", default_features = false }
+oracle = { package = "oracle-module", path = "../oracle", default_features = false }
+price = { package = "price-module", path = "../price", default_features = false }
 
 [build-dependencies]
 wasm-builder-runner = { package = "substrate-wasm-builder-runner", version = "1.0.2" }
@@ -58,5 +59,7 @@ std = [
 	"offchain-primitives/std",
 	"substrate-session/std",
 	"pandora/std",
+	"oracle/std",
+	"price/std",
 ]
 no_std = []
