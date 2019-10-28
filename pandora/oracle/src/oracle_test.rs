@@ -464,14 +464,16 @@ mod tests {
             assert_eq!(info.total_jobs, 1);
             // Cancelling other's request should fail
             assert_err!(Oracle::cancel_request(&DAVE, result.unwrap()), "Not authorized");
-            // Cancelling expired request should fail
-            System::set_block_number(4);
-            assert_err!(Oracle::cancel_request(&RAY, result.unwrap()), "Job already expired");
+            
             // Normal cancelling should be ok 
             System::set_block_number(2); 
+            assert_err!(Oracle::cancel_request(&RAY, result.unwrap()), "Job is not expired");
+
+            // Cancelling expired request should be ok
+            System::set_block_number(4);
             assert_ok!(Oracle::cancel_request(&RAY, result.unwrap()));
 
-            let info = Oracle::oracle_info(ALICE);
+            let info = Oracle::oracle_info(RAY);
             assert_eq!(info.total_jobs, 0);
         }) 
     }

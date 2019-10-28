@@ -766,12 +766,12 @@ impl<T: Trait> OracleMixedIn<T> for Module<T> {
         let job = Self::job(id);
         ensure!(job.from == from.clone(), "Not authorized");
         let block_number = Self::block_number();
-        ensure!(job.expired_at > block_number, "Job already expired");
+        ensure!(job.expired_at <= block_number, "Job is not expired");
         // Take back oracle fee 
         T::Currency::transfer(&Self::cashier_account(), &from, T::OracleFee::get())?;
         // Update and send event notification
         let mut info = Self::oracle_info(job.oracle.clone());
-        info.total_jobs = info.total_jobs.saturating_sub(1);
+        info.total_missed_jobs += 1;
         <OracleInfos<T>>::insert(job.oracle.clone(), info);
 
         <Jobs<T>>::remove(id);
