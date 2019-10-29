@@ -309,7 +309,6 @@ decl_module! {
                 Self::elect_oracles();
             }
             Self::release_due_locked_funds(block_number);
-            Self::release_expired_jobs(block_number);
             Self::cleanup();
         }
 
@@ -420,13 +419,6 @@ impl<T: Trait> Module<T> {
         <Ledgers<T>>::insert(who, ledger);
 
         Self::deposit_event(RawEvent::OracleStakeReleased(who.clone(), released_funds));
-    }
-
-    /// Release expired jobs
-    /// 
-    /// @current_height the height of chain
-    fn release_expired_jobs(current_height: T::BlockNumber) {
-        // TODO:
     }
 
     /// Cleanup dust unqualified members
