@@ -99,7 +99,7 @@ mod tests {
 
         pub const Count: u16 = 3;
 
-        pub const ReportInteval: u64 = 10;
+        pub const ReportInterval: u64 = 10;
         pub const ElectionEra: u64 = 10;
         pub const LockedDuration: u64 = 20;
     }
@@ -112,7 +112,7 @@ mod tests {
 
         // type MaliciousSlashOrigin = collective::EnsureProportionMoreThan<_1, _2, AccountId, OracleCollective>;
         type Count = Count;
-        type ReportInteval = ReportInteval;
+        type ReportInteval = ReportInterval;
         type ElectionEra = ElectionEra;
         type LockedDuration = LockedDuration;
         type ChangeMembers = ();

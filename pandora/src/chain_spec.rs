@@ -1,7 +1,8 @@
 use primitives::{Pair, Public};
 use pandora_runtime::{
 	AccountId, BabeConfig, BalancesConfig, GenesisConfig, GrandpaConfig,
-	SudoConfig, IndicesConfig, SystemConfig, WASM_BINARY, PandoraConfig
+	SudoConfig, IndicesConfig, SystemConfig, WASM_BINARY, PandoraConfig,
+	OracleConfig, PriceConfig,
 };
 use babe_primitives::{AuthorityId as BabeId};
 use grandpa_primitives::{AuthorityId as GrandpaId};
@@ -146,6 +147,14 @@ fn testnet_genesis(initial_authorities: Vec<(AccountId, AccountId, GrandpaId, Ba
 			last_player_account: get_from_seed::<AccountId>("Alice//LastPlayer"), 
 			team_account: get_from_seed::<AccountId>("Alice//Team"), 
 			operator_account: get_from_seed::<AccountId>("Alice//Operator"), 
+		}),
+		oracle: Some(OracleConfig {
+			admin_account: get_from_seed::<AccountId>("Alice"), 
+			cashier_account: get_from_seed::<AccountId>("Alice//Cashier"), 
+		}),
+		price: Some(PriceConfig {
+			admin_account: get_from_seed::<AccountId>("Alice"), 
+			cashier_account: get_from_seed::<AccountId>("Alice//Cashier"), 
 		})
 	}
 }
