@@ -108,7 +108,7 @@ mod tests {
     type Pandora = Module<Test>;
 
     // Define previledged acounts
-    const ADMIN_ACCOUT: u64 = 10000;
+    const ADMIN_ACCOUNT: u64 = 10000;
     const CASHIER_ACCOUNT: u64 = 10001;
     const RESERVE_ACCOUNT: u64 = 10002;
     const POOL_ACCOUNT: u64 = 10003;
@@ -136,7 +136,7 @@ mod tests {
         // Add config for balances
         balances::GenesisConfig::<Test> {
             balances: vec![
-                (ADMIN_ACCOUT, 600_000),
+                (ADMIN_ACCOUNT, 600_000),
                 (CASHIER_ACCOUNT, 100_000),
                 (TEAM_ACCOUNT, 500_000),
                 (ALICE, 100_000),
@@ -155,7 +155,7 @@ mod tests {
         .unwrap();
         // Add config for pandora
         GenesisConfig::<Test> {
-            admin_account: ADMIN_ACCOUT,
+            admin_account: ADMIN_ACCOUNT,
             cashier_account: CASHIER_ACCOUNT,
             reserve_account: RESERVE_ACCOUNT,
             pool_account: POOL_ACCOUNT,
@@ -174,7 +174,7 @@ mod tests {
         with_externalities(&mut new_test_ext(), || {
             // Call init
             assert_eq!(Pandora::game_status(), Status::None);
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_eq!(Pandora::game_status(), Status::Inited);
             assert_eq!(Pandora::dbox_unit_price(), 100);
         })
@@ -184,9 +184,9 @@ mod tests {
     fn it_works_for_creating_dbox() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // Create a dbox
@@ -217,9 +217,9 @@ mod tests {
     fn it_works_for_opening_dbox_sync() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // Create dboxes
@@ -262,9 +262,9 @@ mod tests {
     fn it_works_for_opening_dbox_async() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // Tries to open non-existed dbox
@@ -348,9 +348,9 @@ mod tests {
     fn it_works_for_pending_bonus() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // Ray creates a dbox
@@ -471,10 +471,10 @@ mod tests {
     fn it_works_for_upgrading_dbox() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_eq!(Pandora::game_status(), Status::Inited);
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // Ray creates a dbox
@@ -514,7 +514,7 @@ mod tests {
             assert_eq!(dbox.value, 35 * 3);
             // Pause game
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Paused as u8
             ));
             assert_err!(
@@ -523,7 +523,7 @@ mod tests {
             );
             // Run game again
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // Upgrade again
@@ -555,9 +555,9 @@ mod tests {
     fn it_works_for_staled_dbox() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // Ray creates a dbox
@@ -602,9 +602,9 @@ mod tests {
     fn it_works_for_draining_bonus() {
        with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100_000));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100_000));
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // RAY creates dboxes
@@ -639,10 +639,10 @@ mod tests {
     fn it_works_for_inviting() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_eq!(Pandora::game_status(), Status::Inited);
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // Ray creates a dbox
@@ -662,10 +662,10 @@ mod tests {
     fn it_works_for_normal_prizes() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_eq!(Pandora::game_status(), Status::Inited);
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // create dboxes
@@ -701,10 +701,10 @@ mod tests {
     fn it_works_for_latest_prizes() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_eq!(Pandora::game_status(), Status::Inited);
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // create dboxes above max latest value
@@ -751,10 +751,10 @@ mod tests {
     fn it_works_for_duplicate_prizes() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_eq!(Pandora::game_status(), Status::Inited);
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // create dboxes above max latest value
@@ -801,10 +801,10 @@ mod tests {
     fn it_works_for_single_player_prizes() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_eq!(Pandora::game_status(), Status::Inited);
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
             // create a single dbox
@@ -834,25 +834,25 @@ mod tests {
     fn it_works_for_setting_status() {
         with_externalities(&mut new_test_ext(), || {
             // Init the game
-            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUT), 100));
+            assert_ok!(Pandora::init(Origin::signed(ADMIN_ACCOUNT), 100));
             assert_eq!(Pandora::game_status(), Status::Inited);
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ));
 
             assert_err!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Inited as u8
             ), "Invalid new status");
             
             assert_err!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Running as u8
             ), "New status should be different from current status");
 
             assert_err!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 100
             ), "Invalid status value"); 
 
@@ -862,7 +862,7 @@ mod tests {
             ), "Not authorized"); 
 
             assert_ok!(Pandora::set_status(
-                Origin::signed(ADMIN_ACCOUT),
+                Origin::signed(ADMIN_ACCOUNT),
                 Status::Stopped as u8
             ));
         }) 

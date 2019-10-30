@@ -124,10 +124,9 @@ mod tests {
     type Balances = balances::Module<Test>;
     type Oracle = Module<Test>;
     type System = system::Module<Test>;
-    // type MixedIn = Oracle as OracleMixedIn<Oracle>;
 
     // Define previledged acounts
-    const ADMIN_ACCOUT: u64 = 10000;
+    const ADMIN_ACCOUNT: u64 = 10000;
     const CASHIER_ACCOUNT: u64 = 10001;
 
     // Define general player account

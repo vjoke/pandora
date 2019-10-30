@@ -800,13 +800,12 @@ impl<T: Trait> OracleMixedIn<T> for Module<T> {
         Ok(())
     }
 
-    /// Check if the account report is valid or not
+    /// Check if the account is oracle or not
     ///
     /// @who the account
     fn is_valid(who: &T::AccountId) -> bool {
-        // let report_height = Self::witness_report(who);
-        // report_height + T::ReportInteval::get() >= Self::block_number()
-        true
+        let oracles = Self::oracles();
+        oracles.contains(who)
     }
 }
 

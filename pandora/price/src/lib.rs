@@ -21,28 +21,27 @@ type Price = u128;
 pub trait Trait: balances::Trait {
     /// Round length
     type RoundLength: Get<Self::BlockNumber>;
+    /// Oracle timeout
+    type OracleTimeout: Get<Self::BlockNumber>;
     /// Max oracle count
     type MaxOracleCount: Get<u32>;
-    /// Max ticket fee
-    type MaxTicketFee: Get<BalanceOf<Self>>;
     /// Oracle Mixed in
     type OracleMixedIn: OracleMixedIn<Self>;
     /// The currency type
     type Currency: Currency<Self::AccountId> + ReservableCurrency<Self::AccountId>;
     /// Event
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
-    /// Origin
-    type ReportOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
+    // type ReportOrigin: EnsureOrigin<Self::Origin, Success = Self::AccountId>;
 }
 
-#[derive(PartialEq, Eq, Clone, Encode, Decode)]
+#[derive(PartialEq, Eq, Clone, Copy, Encode, Decode)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct PriceReport<AccountId> {
     reporter: AccountId,
     price: Price,
 }
 
-#[derive(PartialEq, Eq, Clone, Encode, Decode)]
+#[derive(PartialEq, Eq, Clone, Copy, Encode, Decode)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct PendingRequest<Hash, BlockNumber> {
     id: Hash,
@@ -71,8 +70,6 @@ decl_storage! {
         PriceReports get(price_reports): Vec<PriceReport<T::AccountId>>;
         /// Job hash array
         PendingRequests get(pending_requests): Vec<PendingRequest<T::Hash, T::BlockNumber>>;
-        /// Oracle timeout
-        OracleTimeout get(oracle_timeout): T::BlockNumber;
         /// The admin account
         AdminAccount get(admin_account) config(): T::AccountId;
         /// The cashier account
@@ -85,9 +82,8 @@ decl_module! {
 
         fn deposit_event() = default;
         const RoundLength: T::BlockNumber = T::RoundLength::get();
+        const OracleTimeout: T::BlockNumber = T::OracleTimeout::get();
         const MaxOracleCount: u32 = T::MaxOracleCount::get();
-        const MaxTicketFee: BalanceOf<T> = T::MaxTicketFee::get();
-
         /// Request price from oracle
         ///
         /// @origin
@@ -97,7 +93,7 @@ decl_module! {
             ensure!(sender == Self::admin_account(), "Not authorized");
             // TODO:
             let meta = vec![0;32];
-            let timeout = Self::oracle_timeout();
+            let timeout = T::OracleTimeout::get(); 
 
             match T::OracleMixedIn::create_request(&Self::cashier_account(), &meta, timeout, &oracle) {
                 Ok(hash) => {
@@ -113,8 +109,9 @@ decl_module! {
         /// @origin
         /// @price  current price
         /// @id the request id
-        pub fn report(origin, price: Price, id: T::Hash) -> Result {
-            let who = T::ReportOrigin::ensure_origin(origin)?;
+        pub fn report_price(origin, price: Price, id: T::Hash) -> Result {
+            // let who = T::ReportOrigin::ensure_origin(origin)?;
+            let who = ensure_signed(origin)?;
             T::OracleMixedIn::on_request_fulfilled(&who, id)?;
 
             Self::add_price(who, price);
