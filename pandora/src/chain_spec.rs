@@ -149,7 +149,6 @@ fn testnet_genesis(initial_authorities: Vec<(AccountId, AccountId, GrandpaId, Ba
 			operator_account: get_from_seed::<AccountId>("Alice//Operator"), 
 		}),
 		oracle: Some(OracleConfig {
-			admin_account: get_from_seed::<AccountId>("Alice"), 
 			cashier_account: get_from_seed::<AccountId>("Alice//Cashier"), 
 		}),
 		price: Some(PriceConfig {
