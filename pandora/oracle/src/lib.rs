@@ -172,6 +172,8 @@ decl_event!(
         OracleSlashed(AccountId, Balance),
         /// Amount paid to one oracle.
         OraclePaid(AccountId, Balance),
+        /// Oracles are elected
+        OracleElected(BlockNumber),
         /// Candidate added.
         CandidateAdded(AccountId),
         /// Candidate remove.
@@ -306,7 +308,7 @@ decl_module! {
             //     <CurrentEra<T>>::put(block_number+T::ElectionEra::get());
             // }
             if T::BlockNumber::zero() == block_number % T::ElectionEra::get() {
-                Self::elect_oracles();
+                Self::elect_oracles(block_number);
             }
             Self::release_due_locked_funds(block_number);
             Self::cleanup();
@@ -319,7 +321,9 @@ decl_module! {
 impl<T: Trait> Module<T> {
     /// Elect oracles
     /// We choose the top N candidates according to staked funds
-    fn elect_oracles() {
+    /// 
+    /// @block_number   the current block number
+    fn elect_oracles(block_number: T::BlockNumber) {
         let current_oracles = Self::oracles();
         let current_candidates = Self::candidates();
         let mut all_accounts: Vec<T::AccountId> = Vec::new();
@@ -367,6 +371,7 @@ impl<T: Trait> Module<T> {
 
         <Oracles<T>>::put(&chosen_oracles);
         <Candidates<T>>::put(remaining_candidates.to_vec());
+        Self::deposit_event(RawEvent::OracleElected(block_number));
         T::ChangeMembers::change_members(&new_oracles, &outgoing_oracles, chosen_oracles);
     }
 

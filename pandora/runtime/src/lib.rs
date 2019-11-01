@@ -41,7 +41,7 @@ pub use support::{construct_runtime, parameter_types, StorageValue};
 pub use timestamp::Call as TimestampCall;
 
 /// An index to a block.
-pub type BlockNumber = u32;
+pub type BlockNumber = u32; // TODO: use u64?
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = AnySignature;
@@ -286,7 +286,7 @@ impl pandora::Trait for Runtime {
 }
 
 parameter_types! {
-    pub const MaxTimeout: BlockNumber = 3;
+    pub const MaxTimeout: BlockNumber = 30; // TODO: use small value
     pub const OracleFee: Balance = 10;
     pub const MissReportSlash: Balance = 1_000_000;
     pub const MinStaking: Balance = 1_000_000_000;
@@ -315,7 +315,7 @@ impl oracle::Trait for Runtime {
 
 parameter_types! {
     pub const RoundLength: BlockNumber = 100;
-    pub const OracleTimeout: BlockNumber = 3;
+    pub const OracleTimeout: BlockNumber = 30; // TODO: use small value
     pub const MaxOracleCount: u32 = 10;
 }
 
