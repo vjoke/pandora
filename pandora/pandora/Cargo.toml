@@ -16,6 +16,7 @@ primitives = { package = "substrate-primitives", path = "../../core/primitives",
 balances = { package = "srml-balances", path = "../../srml/balances", default_features = false }
 system = { package = "srml-system", path = "../../srml/system", default_features = false }
 sr-primitives = { path = "../../core/sr-primitives", default_features = false }
+randomness-collective-flip = { package = "srml-randomness-collective-flip", path = "../../srml/randomness-collective-flip", default_features = false }
 
 [features]
 default = ["std"]
@@ -31,4 +32,5 @@ std = [
 	"version/std",
 	"serde",
 	"safe-mix/std",
+	"randomness-collective-flip/std",
 ]

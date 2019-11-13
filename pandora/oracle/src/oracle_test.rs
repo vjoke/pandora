@@ -6,14 +6,14 @@ mod tests {
 
     use primitives::u32_trait::{_1, _2};
     use primitives::{Blake2Hasher, H256};
-    use runtime_io::with_externalities;
+    use runtime_io::TestExternalities;
     use sr_primitives::weights::Weight;
     use sr_primitives::Perbill;
     use sr_primitives::{
         testing::Header,
         traits::{BlakeTwo256, ConvertInto, IdentityLookup, OnFinalize},
     };
-    use support::{assert_noop, assert_err, assert_ok, impl_outer_origin, parameter_types};
+    use support::{assert_err, assert_noop, assert_ok, impl_outer_origin, parameter_types};
 
     impl_outer_origin! {
         pub enum Origin for Test {}
@@ -40,7 +40,6 @@ mod tests {
         type AccountId = u64;
         type Lookup = IdentityLookup<Self::AccountId>;
         type Header = Header;
-        type WeightMultiplierUpdate = ();
         type Event = ();
         type BlockHashCount = BlockHashCount;
         type MaximumBlockWeight = MaximumBlockWeight;
@@ -65,16 +64,11 @@ mod tests {
         type OnFreeBalanceZero = ();
         type OnNewAccount = ();
         type Event = ();
-        type TransactionPayment = ();
         type DustRemoval = ();
         type TransferPayment = ();
-
         type ExistentialDeposit = ExistentialDeposit;
         type TransferFee = TransferFee;
         type CreationFee = CreationFee;
-        type TransactionBaseFee = TransactionBaseFee;
-        type TransactionByteFee = TransactionByteFee;
-        type WeightToFee = ConvertInto;
     }
 
     // type OracleCollective = collective::Instance1;
@@ -142,14 +136,14 @@ mod tests {
 
     // This function basically just builds a genesis storage key/value store according to
     // our desired mockup.
-    fn new_test_ext() -> runtime_io::TestExternalities<Blake2Hasher> {
+    fn new_test_ext() -> runtime_io::TestExternalities {
         let mut t = system::GenesisConfig::default()
             .build_storage::<Test>()
             .unwrap();
         // Add config for balances
         balances::GenesisConfig::<Test> {
             balances: vec![
-                (ADMIN_ACCOUT, 600_000),
+                (ADMIN_ACCOUNT, 600_000),
                 (CASHIER_ACCOUNT, 100_000),
                 (ALICE, 100_000),
                 (BOB, 100_000),
@@ -177,7 +171,7 @@ mod tests {
 
     #[test]
     fn it_works_for_bonding() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             assert_err!(
                 Oracle::bond(Origin::signed(ALICE), 10),
                 "Total staked amount is too small"
@@ -193,7 +187,10 @@ mod tests {
                 "Cannot stake more funds than owned"
             );
             assert_ok!(Oracle::bond(Origin::signed(ALICE), 99_900));
-            assert_err!(Oracle::bond(Origin::signed(ALICE), 1), "Cannot stake more funds than owned");
+            assert_err!(
+                Oracle::bond(Origin::signed(ALICE), 1),
+                "Cannot stake more funds than owned"
+            );
 
             assert_eq!(Oracle::oracles(), []);
             assert_eq!(Oracle::candidates(), [ALICE]);
@@ -202,17 +199,16 @@ mod tests {
             assert_eq!(ledger.locked, 100_000);
             assert_eq!(Balances::free_balance(&ALICE), 100_000);
         })
-
     }
 
     #[test]
     fn it_works_for_normal_unbonding() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             System::set_block_number(1);
             assert_ok!(Oracle::bond(Origin::signed(ALICE), 200));
             let ledger = Oracle::ledger(ALICE);
             assert_eq!(ledger.locked, 200);
-            
+
             assert_noop!(
                 Oracle::unbond(Origin::signed(ALICE), 0),
                 "The unbond amount is zero or larger than staked funds"
@@ -227,41 +223,53 @@ mod tests {
 
             let ledger = Oracle::ledger(ALICE);
             assert_eq!(ledger.locked, 200);
-            assert_eq!(ledger.unbonds[0], Unbond{ amount: 10, until: 21});
+            assert_eq!(
+                ledger.unbonds[0],
+                Unbond {
+                    amount: 10,
+                    until: 21
+                }
+            );
 
             <Oracle as OnFinalize<u64>>::on_finalize(21);
 
             let ledger = Oracle::ledger(ALICE);
             assert_eq!(ledger.locked, 190);
-            assert_eq!(ledger.unbonds, []); 
+            assert_eq!(ledger.unbonds, []);
         })
     }
 
     #[test]
     fn it_works_for_unbonding_to_unqualified_member() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             System::set_block_number(1);
             assert_ok!(Oracle::bond(Origin::signed(ALICE), 100));
             let ledger = Oracle::ledger(ALICE);
             assert_eq!(ledger.locked, 100);
-            
+
             assert_ok!(Oracle::unbond(Origin::signed(ALICE), 10));
 
             let ledger = Oracle::ledger(ALICE);
             assert_eq!(ledger.locked, 100);
-            assert_eq!(ledger.unbonds[0], Unbond{ amount: 100, until: 21});
+            assert_eq!(
+                ledger.unbonds[0],
+                Unbond {
+                    amount: 100,
+                    until: 21
+                }
+            );
 
             <Oracle as OnFinalize<u64>>::on_finalize(21);
 
             let ledger = Oracle::ledger(ALICE);
             assert_eq!(ledger.locked, 0);
-            assert_eq!(ledger.unbonds, []); 
+            assert_eq!(ledger.unbonds, []);
         })
     }
 
     #[test]
     fn it_works_for_candidate() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             System::set_block_number(1);
             assert_ok!(Oracle::bond(Origin::signed(ALICE), 100));
             let candidates = Oracle::candidates();
@@ -279,7 +287,7 @@ mod tests {
 
     #[test]
     fn it_works_for_electing_oracle() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             System::set_block_number(1);
             assert_ok!(Oracle::bond(Origin::signed(ALICE), 150));
             assert_ok!(Oracle::bond(Origin::signed(BOB), 200));
@@ -301,7 +309,7 @@ mod tests {
 
     #[test]
     fn it_works_for_unqualified_member() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             System::set_block_number(1);
             assert_ok!(Oracle::bond(Origin::signed(ALICE), 120));
             assert_ok!(Oracle::bond(Origin::signed(BOB), 200));
@@ -334,7 +342,7 @@ mod tests {
             let candidates = Oracle::candidates();
             assert_eq!(candidates, [CHARLIE, BOB]);
 
-            <Oracle as OnFinalize<u64>>::on_finalize(20); 
+            <Oracle as OnFinalize<u64>>::on_finalize(20);
             let oracles = Oracle::oracles();
             assert_eq!(oracles, [BOB, DAVE, ALICE]);
 
@@ -342,13 +350,13 @@ mod tests {
             assert_eq!(candidates, [CHARLIE]);
 
             let members = Oracle::unqualified_members();
-            assert_eq!(members, []); 
+            assert_eq!(members, []);
         })
     }
 
     #[test]
     fn it_works_for_claiming_reward() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             System::set_block_number(1);
             assert_ok!(Oracle::bond(Origin::signed(ALICE), 120));
             assert_ok!(Oracle::bond(Origin::signed(BOB), 200));
@@ -371,13 +379,12 @@ mod tests {
             );
 
             // TODO:
-            
         })
     }
 
     #[test]
     fn it_works_for_creating_request() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             System::set_block_number(1);
             assert_ok!(Oracle::bond(Origin::signed(ALICE), 120));
             assert_ok!(Oracle::bond(Origin::signed(BOB), 200));
@@ -389,54 +396,32 @@ mod tests {
 
             <Oracle as OnFinalize<u64>>::on_finalize(10);
             // The length of max meta data should be <= 1024
-            let result = Oracle::create_request(
-                &RAY,
-                &vec![1;1025],
-                3,
-                &ALICE
+            let result = Oracle::create_request(&RAY, &vec![1; 1025], 3, &ALICE);
+            assert_err!(
+                result,
+                "The length of meta should be equal or less than 1024"
             );
-            assert_err!(result, "The length of meta should be equal or less than 1024");
             // The timeout should be valid
-            let result = Oracle::create_request(
-                &RAY,
-                &vec![1;100],
-                0,
-                &ALICE
-            );
+            let result = Oracle::create_request(&RAY, &vec![1; 100], 0, &ALICE);
             assert_err!(result, "Invalid timeout range, should be (0, MaxTimeout]");
-            
-            let result = Oracle::create_request(
-                &RAY,
-                &vec![1;100],
-                10,
-                &ALICE
-            );
+
+            let result = Oracle::create_request(&RAY, &vec![1; 100], 10, &ALICE);
             assert_err!(result, "Invalid timeout range, should be (0, MaxTimeout]");
             // The account requested should be an oracle
-            let result = Oracle::create_request(
-                &RAY,
-                &vec![1;100],
-                3,
-                &NICOLE
-            );
+            let result = Oracle::create_request(&RAY, &vec![1; 100], 3, &NICOLE);
             assert_err!(result, "Should be a valid oracle");
 
-            let result = Oracle::create_request(
-                &RAY,
-                &vec![1,2,3],
-                3,
-                &ALICE
-            );
+            let result = Oracle::create_request(&RAY, &vec![1, 2, 3], 3, &ALICE);
 
             assert_eq!(result.is_ok(), true);
             println!("result id is {}", result.unwrap());
             assert_eq!(Nonce::get(), 1);
-        }) 
+        })
     }
 
     #[test]
     fn it_works_for_cancelling_request() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             System::set_block_number(1);
             assert_ok!(Oracle::bond(Origin::signed(ALICE), 120));
             assert_ok!(Oracle::bond(Origin::signed(BOB), 200));
@@ -448,25 +433,29 @@ mod tests {
 
             <Oracle as OnFinalize<u64>>::on_finalize(10);
             // Cancel non-existed request should fail
-            assert_err!(Oracle::cancel_request(&RAY, H256::random()), "Job does not exist");
-            // Create a normal request 
-            let result = Oracle::create_request(
-                &RAY,
-                &vec![1,2,3],
-                3,
-                &ALICE
+            assert_err!(
+                Oracle::cancel_request(&RAY, H256::random()),
+                "Job does not exist"
             );
+            // Create a normal request
+            let result = Oracle::create_request(&RAY, &vec![1, 2, 3], 3, &ALICE);
             // Result should be ok
             assert_eq!(result.is_ok(), true);
             println!("result id is {}", result.unwrap());
             let info = Oracle::oracle_info(ALICE);
             assert_eq!(info.total_jobs, 1);
             // Cancelling other's request should fail
-            assert_err!(Oracle::cancel_request(&DAVE, result.unwrap()), "Not authorized");
-            
-            // Normal cancelling should be ok 
-            System::set_block_number(2); 
-            assert_err!(Oracle::cancel_request(&RAY, result.unwrap()), "Job is not expired");
+            assert_err!(
+                Oracle::cancel_request(&DAVE, result.unwrap()),
+                "Not authorized"
+            );
+
+            // Normal cancelling should be ok
+            System::set_block_number(2);
+            assert_err!(
+                Oracle::cancel_request(&RAY, result.unwrap()),
+                "Job is not expired"
+            );
 
             // Cancelling expired request should be ok
             System::set_block_number(4);
@@ -474,12 +463,12 @@ mod tests {
 
             let info = Oracle::oracle_info(RAY);
             assert_eq!(info.total_jobs, 0);
-        }) 
+        })
     }
 
     #[test]
     fn it_works_for_fulfilling_request() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             System::set_block_number(1);
             assert_ok!(Oracle::bond(Origin::signed(ALICE), 120));
             assert_ok!(Oracle::bond(Origin::signed(BOB), 200));
@@ -491,14 +480,12 @@ mod tests {
 
             <Oracle as OnFinalize<u64>>::on_finalize(10);
             // Cancel non-existed request should fail
-            assert_err!(Oracle::cancel_request(&RAY, H256::random()), "Job does not exist");
-            // Create a normal request 
-            let result = Oracle::create_request(
-                &RAY,
-                &vec![1,2,3],
-                3,
-                &ALICE
+            assert_err!(
+                Oracle::cancel_request(&RAY, H256::random()),
+                "Job does not exist"
             );
+            // Create a normal request
+            let result = Oracle::create_request(&RAY, &vec![1, 2, 3], 3, &ALICE);
             // Result should be ok
             assert_eq!(result.is_ok(), true);
             println!("result id is {}", result.unwrap());
@@ -507,17 +494,23 @@ mod tests {
             assert_eq!(info.total_witnessed_jobs, 0);
 
             // Fulfilling other's request should fail
-            assert_err!(Oracle::on_request_fulfilled(&DAVE, result.unwrap()), "Not authorized");
+            assert_err!(
+                Oracle::on_request_fulfilled(&DAVE, result.unwrap()),
+                "Not authorized"
+            );
             // Fulfilling expired request should fail
             System::set_block_number(4);
-            assert_err!(Oracle::on_request_fulfilled(&ALICE, result.unwrap()), "Job already expired");
-            // Normal operation should be ok 
-            System::set_block_number(2); 
+            assert_err!(
+                Oracle::on_request_fulfilled(&ALICE, result.unwrap()),
+                "Job already expired"
+            );
+            // Normal operation should be ok
+            System::set_block_number(2);
             assert_ok!(Oracle::on_request_fulfilled(&ALICE, result.unwrap()));
 
             let info = Oracle::oracle_info(ALICE);
             assert_eq!(info.total_jobs, 1);
             assert_eq!(info.total_witnessed_jobs, 1);
-        }) 
-    } 
+        })
+    }
 }

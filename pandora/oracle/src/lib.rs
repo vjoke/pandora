@@ -12,8 +12,8 @@ use sr_primitives::traits::{
     Bounded, CheckedAdd, CheckedSub, EnsureOrigin, Hash, Saturating, Zero,
 };
 use support::traits::{
-    ChangeMembers, Currency, Get, LockIdentifier, LockableCurrency, ReservableCurrency,
-    WithdrawReason, WithdrawReasons,
+    ChangeMembers, Currency, ExistenceRequirement, Get, LockIdentifier, LockableCurrency,
+    ReservableCurrency, WithdrawReason, WithdrawReasons,
 };
 use support::{
     decl_event, decl_module, decl_storage, dispatch::Result, ensure, StorageMap, StorageValue,
@@ -88,11 +88,8 @@ pub type BalanceOf<T> =
 // 	<<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::NegativeImbalance;
 
 type LedgerOf<T> = Ledger<BalanceOf<T>, <T as system::Trait>::BlockNumber>;
-type JobOf<T> = Job<
-    <T as system::Trait>::BlockNumber,
-    BalanceOf<T>,
-    <T as system::Trait>::AccountId,
->;
+type JobOf<T> =
+    Job<<T as system::Trait>::BlockNumber, BalanceOf<T>, <T as system::Trait>::AccountId>;
 
 const LOCKED_ID: LockIdentifier = *b"oracle  ";
 
@@ -290,7 +287,7 @@ decl_module! {
             ensure!(amount <= info.withdrawable_reward, "Exceed withdrawable funds");
             info.withdrawable_reward = info.withdrawable_reward.saturating_sub(amount);
 
-            T::Currency::transfer(&Self::cashier_account(), &oracle, amount)?;
+            T::Currency::transfer(&Self::cashier_account(), &oracle, amount, ExistenceRequirement::AllowDeath)?;
             <OracleInfos<T>>::insert(oracle.clone(), info);
 
             Ok(())
@@ -321,7 +318,7 @@ decl_module! {
 impl<T: Trait> Module<T> {
     /// Elect oracles
     /// We choose the top N candidates according to staked funds
-    /// 
+    ///
     /// @block_number   the current block number
     fn elect_oracles(block_number: T::BlockNumber) {
         let current_oracles = Self::oracles();
@@ -465,22 +462,27 @@ impl<T: Trait> Module<T> {
             .ok_or("Not enough money")?;
         // FIXME: count on transfering fee?
         // let fee = T::TransferFee::get();
-		// let liability = match amount.checked_add(&fee) {
-		// 	Some(l) => l,
-		// 	None => return Err("got overflow after adding a fee to value"),
-		// };
+        // let liability = match amount.checked_add(&fee) {
+        // 	Some(l) => l,
+        // 	None => return Err("got overflow after adding a fee to value"),
+        // };
 
-		// let new_balance = match current_balance.checked_sub(&liability) {
-		// 	None => return Err("balance too low to send value"),
-		// 	Some(b) => b,
-		// };
+        // let new_balance = match current_balance.checked_sub(&liability) {
+        // 	None => return Err("balance too low to send value"),
+        // 	Some(b) => b,
+        // };
 
         ensure!(
-            Ok(()) ==
-            T::Currency::ensure_can_withdraw(who, amount, WithdrawReason::Transfer, new_balance),
+            Ok(())
+                == T::Currency::ensure_can_withdraw(
+                    who,
+                    amount,
+                    WithdrawReasons::all(),
+                    new_balance
+                ),
             "Cannot stake more funds than owned"
         );
-        
+
         // If it's a new user, a default ledger will be returned
         let mut ledger = Self::ledger(who);
         let new_locked = ledger
@@ -725,7 +727,12 @@ impl<T: Trait> OracleMixedIn<T> for Module<T> {
         // Check if hash value conflicts with previous jobs
         ensure!(!<Jobs<T>>::exists(hash), "Hash value already exists");
         // Transfer funds for fee
-        T::Currency::transfer(&from, &Self::cashier_account(), T::OracleFee::get())?;
+        T::Currency::transfer(
+            &from,
+            &Self::cashier_account(),
+            T::OracleFee::get(),
+            ExistenceRequirement::AllowDeath,
+        )?;
 
         let job = JobOf::<T> {
             from: from.clone(),
@@ -764,8 +771,13 @@ impl<T: Trait> OracleMixedIn<T> for Module<T> {
         ensure!(job.from == from.clone(), "Not authorized");
         let block_number = Self::block_number();
         ensure!(job.expired_at <= block_number, "Job is not expired");
-        // Take back oracle fee 
-        T::Currency::transfer(&Self::cashier_account(), &from, T::OracleFee::get())?;
+        // Take back oracle fee
+        T::Currency::transfer(
+            &Self::cashier_account(),
+            &from,
+            T::OracleFee::get(),
+            ExistenceRequirement::AllowDeath,
+        )?;
         // Update and send event notification
         let mut info = Self::oracle_info(job.oracle.clone());
         info.total_missed_jobs += 1;
@@ -795,7 +807,7 @@ impl<T: Trait> OracleMixedIn<T> for Module<T> {
         // TODO: delay transfer?
         info.total_reward = info.total_reward.saturating_add(job.reward);
         info.withdrawable_reward = info.withdrawable_reward.saturating_add(job.reward);
-       
+
         // Update send event notification
         <OracleInfos<T>>::insert(oracle.clone(), info);
         <Jobs<T>>::remove(id);

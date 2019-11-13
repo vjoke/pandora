@@ -4,16 +4,16 @@ mod tests {
     use super::*;
     use crate::*;
 
-    use rstd::result;
     use oracle::OracleMixedIn;
     use primitives::u32_trait::{_1, _2};
     use primitives::{Blake2Hasher, H256};
-    use runtime_io::with_externalities;
+    use rstd::result;
+    use runtime_io::TestExternalities;
     use sr_primitives::weights::Weight;
     use sr_primitives::Perbill;
     use sr_primitives::{
         testing::Header,
-        traits::{BlakeTwo256, ConvertInto, IdentityLookup, EnsureOrigin, OnFinalize},
+        traits::{BlakeTwo256, ConvertInto, EnsureOrigin, IdentityLookup, OnFinalize},
     };
     use support::{assert_err, assert_noop, assert_ok, impl_outer_origin, parameter_types};
 
@@ -32,7 +32,7 @@ mod tests {
         pub const MaximumBlockLength: u32 = 2 * 1024;
         pub const AvailableBlockRatio: Perbill = Perbill::from_percent(75);
     }
-    
+
     impl system::Trait for Test {
         type Origin = Origin;
         type Call = ();
@@ -43,7 +43,6 @@ mod tests {
         type AccountId = u64;
         type Lookup = IdentityLookup<Self::AccountId>;
         type Header = Header;
-        type WeightMultiplierUpdate = ();
         type Event = ();
         type BlockHashCount = BlockHashCount;
         type MaximumBlockWeight = MaximumBlockWeight;
@@ -68,16 +67,11 @@ mod tests {
         type OnFreeBalanceZero = ();
         type OnNewAccount = ();
         type Event = ();
-        type TransactionPayment = ();
         type DustRemoval = ();
         type TransferPayment = ();
-
         type ExistentialDeposit = ExistentialDeposit;
         type TransferFee = TransferFee;
         type CreationFee = CreationFee;
-        type TransactionBaseFee = TransactionBaseFee;
-        type TransactionByteFee = TransactionByteFee;
-        type WeightToFee = ConvertInto;
     }
 
     parameter_types! {
@@ -142,7 +136,7 @@ mod tests {
 
     // This function basically just builds a genesis storage key/value store according to
     // our desired mockup.
-    fn new_test_ext() -> runtime_io::TestExternalities<Blake2Hasher> {
+    fn new_test_ext() -> runtime_io::TestExternalities {
         let mut t = system::GenesisConfig::default()
             .build_storage::<Test>()
             .unwrap();
@@ -178,7 +172,7 @@ mod tests {
 
     #[test]
     fn it_works_for_requesting_price() {
-        with_externalities(&mut new_test_ext(), || {
+        new_test_ext().execute_with(|| {
             System::set_block_number(1);
             assert_err!(
                 Price::request_price(Origin::signed(RAY), DJANGO),
@@ -190,7 +184,11 @@ mod tests {
             print!("{:#?}", request);
             // Oracle report request
             let price = 5000;
-            assert_ok!(Price::report_price(Origin::signed(DJANGO), price, request.id));
+            assert_ok!(Price::report_price(
+                Origin::signed(DJANGO),
+                price,
+                request.id
+            ));
             assert_eq!(Price::current_price(), 0);
             <Price as OnFinalize<u64>>::on_finalize(1);
             assert_eq!(Price::current_price(), price);
@@ -200,7 +198,7 @@ mod tests {
             assert_ok!(Price::report_price(Origin::signed(DJANGO), price, id));
             assert_eq!(Price::current_price(), 5000);
             <Price as OnFinalize<u64>>::on_finalize(2);
-            assert_eq!(Price::current_price(), price); 
+            assert_eq!(Price::current_price(), price);
 
             let price = 7000;
             let id = H256::random();

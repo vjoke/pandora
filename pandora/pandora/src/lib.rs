@@ -3,7 +3,7 @@
 //! `pandora` is a module for gaming, we use this module to IGO(Initial Gaming Offering) our tokens
 //! This can be compiled with `#[no_std]`, ready for Wasm
 #![cfg_attr(not(feature = "std"), no_std)]
-#![recursion_limit="256"]
+#![recursion_limit = "256"]
 
 // mod pandora;
 #[cfg(test)]
@@ -13,7 +13,7 @@ use support::{
     decl_event, decl_module, decl_storage,
     dispatch::Result,
     ensure,
-    traits::{Currency, Get, ReservableCurrency},
+    traits::{Currency, ExistenceRequirement, Get, Randomness, ReservableCurrency},
     StorageMap, StorageValue,
 };
 
@@ -680,6 +680,7 @@ impl<T: Trait> Module<T> {
                 &Self::cashier_account(),
                 &invitor_account,
                 commission_amount,
+                ExistenceRequirement::AllowDeath,
             )?;
             // Update invitor's commission balance
             Self::add_commission(&invitor_account, commission_amount)?;
@@ -851,7 +852,11 @@ impl<T: Trait> Module<T> {
     ) -> Result {
         // Generate hash to assign id of dbox
         let nonce = Nonce::get();
-        let random_hash = (<system::Module<T>>::random_seed(), &sender, nonce)
+        let random_hash = (
+            <randomness_collective_flip::Module<T>>::random_seed(),
+            &sender,
+            nonce,
+        )
             .using_encoded(<T as system::Trait>::Hashing::hash);
 
         let mut new_dbox = DboxOf::<T> {
@@ -869,8 +874,12 @@ impl<T: Trait> Module<T> {
         let _ = Self::check_insert(&sender, &random_hash)?;
         if transfer {
             // Transfer fund of buying dbox to our cashier account
-            let _ =
-                T::Currency::transfer(&sender, &Self::cashier_account(), Self::dbox_unit_price())?;
+            let _ = T::Currency::transfer(
+                &sender,
+                &Self::cashier_account(),
+                Self::dbox_unit_price(),
+                ExistenceRequirement::AllowDeath,
+            )?;
         }
         // From now on, all state transition operations should be infailable
         Self::split_money(&mut new_dbox)?;
@@ -994,7 +1003,12 @@ impl<T: Trait> Module<T> {
                     dbox.value
                 };
                 // FIXME: we do not care if the transfer is ok or not
-                let _ = T::Currency::transfer(&Self::cashier_account(), &player, amount);
+                let _ = T::Currency::transfer(
+                    &Self::cashier_account(),
+                    &player,
+                    amount,
+                    ExistenceRequirement::AllowDeath,
+                );
                 let _ = Self::add_bonus(&player, amount)?;
 
                 if double {
@@ -1015,17 +1029,23 @@ impl<T: Trait> Module<T> {
     }
 
     /// Upgrade dbox by id
-    /// 
+    ///
     /// @sender the player
     /// @dbox_id id of the dbox
     fn upgrade_dbox_by_id(sender: &T::AccountId, dbox_id: T::Hash) -> Result {
         let _ = Self::ensure_status(vec![Status::Running])?;
 
         ensure!(<DboxOwner<T>>::exists(dbox_id), "Dbox does not exist");
-        ensure!(Some(sender.clone()) == <DboxOwner<T>>::get(dbox_id), "The owner of the dbox is not the sender");
+        ensure!(
+            Some(sender.clone()) == <DboxOwner<T>>::get(dbox_id),
+            "The owner of the dbox is not the sender"
+        );
 
         let mut dbox = Self::get_dbox_by_id(dbox_id).unwrap();
-        ensure!(dbox.status == DboxStatus::Active, "The status of dbox should be active");
+        ensure!(
+            dbox.status == DboxStatus::Active,
+            "The status of dbox should be active"
+        );
 
         ensure!(dbox.value >= Self::dbox_unit_price(), "Not enough money");
 
@@ -1193,8 +1213,12 @@ impl<T: Trait> Module<T> {
                     // FIXME: We do not care if transfer is ok or not
                     let last_player_account = Self::last_player_account();
                     let last_player_prize = <Ledger<T>>::get(&last_player_account);
-                    let _ =
-                        T::Currency::transfer(&Self::cashier_account(), &player, last_player_prize);
+                    let _ = T::Currency::transfer(
+                        &Self::cashier_account(),
+                        &player,
+                        last_player_prize,
+                        ExistenceRequirement::AllowDeath,
+                    );
                     let _ = Self::add_prize(&player, last_player_prize);
                     // Reset last player account
                 }
@@ -1210,7 +1234,12 @@ impl<T: Trait> Module<T> {
         let average_prize = Self::average_prize();
         if !average_prize.is_zero() {
             // FIXME: we don't care if the transfer is ok or not
-            let _ = T::Currency::transfer(&Self::cashier_account(), &player, average_prize);
+            let _ = T::Currency::transfer(
+                &Self::cashier_account(),
+                &player,
+                average_prize,
+                ExistenceRequirement::AllowDeath,
+            );
             let _ = Self::add_prize(&player, average_prize);
         }
 
