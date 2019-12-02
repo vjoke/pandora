@@ -29,21 +29,21 @@ pub struct Signature(pub Vec<u8>);
 pub struct AuthorityId(pub Vec<u8>);
 
 sr_api::decl_runtime_apis! {
-	/// The authority discovery api.
-	///
-	/// This api is used by the `core/authority-discovery` module to retrieve our
-	/// own authority identifier, to retrieve identifiers of the current authority
-	/// set, as well as sign and verify Kademlia Dht external address payloads
-	/// from and to other authorities.
-	pub trait AuthorityDiscoveryApi {
-		/// Retrieve authority identifiers of the current authority set.
-		fn authorities() -> Vec<AuthorityId>;
+    /// The authority discovery api.
+    ///
+    /// This api is used by the `core/authority-discovery` module to retrieve our
+    /// own authority identifier, to retrieve identifiers of the current authority
+    /// set, as well as sign and verify Kademlia Dht external address payloads
+    /// from and to other authorities.
+    pub trait AuthorityDiscoveryApi {
+        /// Retrieve authority identifiers of the current authority set.
+        fn authorities() -> Vec<AuthorityId>;
 
-		/// Sign the given payload with the private key corresponding to the given authority id.
-		fn sign(payload: &Vec<u8>) -> Option<(Signature, AuthorityId)>;
+        /// Sign the given payload with the private key corresponding to the given authority id.
+        fn sign(payload: &Vec<u8>) -> Option<(Signature, AuthorityId)>;
 
-		/// Verify the given signature for the given payload with the given
-		/// authority identifier.
-		fn verify(payload: &Vec<u8>, signature: &Signature, authority_id: &AuthorityId) -> bool;
-	}
+        /// Verify the given signature for the given payload with the given
+        /// authority identifier.
+        fn verify(payload: &Vec<u8>, signature: &Signature, authority_id: &AuthorityId) -> bool;
+    }
 }

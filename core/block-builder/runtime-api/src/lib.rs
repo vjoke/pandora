@@ -20,24 +20,24 @@
 
 use sr_primitives::{traits::Block as BlockT, ApplyResult};
 
-use inherents::{InherentData, CheckInherentsResult};
+use inherents::{CheckInherentsResult, InherentData};
 
 sr_api::decl_runtime_apis! {
-	/// The `BlockBuilder` api trait that provides the required functionality for building a block.
-	#[api_version(3)]
-	pub trait BlockBuilder {
-		/// Apply the given extrinsics.
-		fn apply_extrinsic(extrinsic: <Block as BlockT>::Extrinsic) -> ApplyResult;
-		/// Finish the current block.
-		#[renamed("finalise_block", 3)]
-		fn finalize_block() -> <Block as BlockT>::Header;
-		/// Generate inherent extrinsics. The inherent data will vary from chain to chain.
-		fn inherent_extrinsics(
-			inherent: InherentData,
-		) -> rstd::vec::Vec<<Block as BlockT>::Extrinsic>;
-		/// Check that the inherents are valid. The inherent data will vary from chain to chain.
-		fn check_inherents(block: Block, data: InherentData) -> CheckInherentsResult;
-		/// Generate a random seed.
-		fn random_seed() -> <Block as BlockT>::Hash;
-	}
+    /// The `BlockBuilder` api trait that provides the required functionality for building a block.
+    #[api_version(3)]
+    pub trait BlockBuilder {
+        /// Apply the given extrinsics.
+        fn apply_extrinsic(extrinsic: <Block as BlockT>::Extrinsic) -> ApplyResult;
+        /// Finish the current block.
+        #[renamed("finalise_block", 3)]
+        fn finalize_block() -> <Block as BlockT>::Header;
+        /// Generate inherent extrinsics. The inherent data will vary from chain to chain.
+        fn inherent_extrinsics(
+            inherent: InherentData,
+        ) -> rstd::vec::Vec<<Block as BlockT>::Extrinsic>;
+        /// Check that the inherents are valid. The inherent data will vary from chain to chain.
+        fn check_inherents(block: Block, data: InherentData) -> CheckInherentsResult;
+        /// Generate a random seed.
+        fn random_seed() -> <Block as BlockT>::Hash;
+    }
 }

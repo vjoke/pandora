@@ -18,95 +18,101 @@
 
 #![cfg(test)]
 
-use std::collections::HashSet;
+use crate::{GenesisConfig, IsDeadAccount, Module, OnNewAccount, ResolveHint, Trait};
+use primitives::H256;
 use ref_thread_local::{ref_thread_local, RefThreadLocal};
 use sr_primitives::testing::Header;
 use sr_primitives::Perbill;
-use primitives::H256;
+use std::collections::HashSet;
 use support::{impl_outer_origin, parameter_types};
 use {runtime_io, system};
-use crate::{GenesisConfig, Module, Trait, IsDeadAccount, OnNewAccount, ResolveHint};
 
-impl_outer_origin!{
-	pub enum Origin for Runtime {}
+impl_outer_origin! {
+    pub enum Origin for Runtime {}
 }
 
 ref_thread_local! {
-	static managed ALIVE: HashSet<u64> = HashSet::new();
+    static managed ALIVE: HashSet<u64> = HashSet::new();
 }
 
 pub fn make_account(who: u64) {
-	ALIVE.borrow_mut().insert(who);
-	Indices::on_new_account(&who);
+    ALIVE.borrow_mut().insert(who);
+    Indices::on_new_account(&who);
 }
 
 pub fn kill_account(who: u64) {
-	ALIVE.borrow_mut().remove(&who);
+    ALIVE.borrow_mut().remove(&who);
 }
 
 pub struct TestIsDeadAccount {}
 impl IsDeadAccount<u64> for TestIsDeadAccount {
-	fn is_dead_account(who: &u64) -> bool {
-		!ALIVE.borrow_mut().contains(who)
-	}
+    fn is_dead_account(who: &u64) -> bool {
+        !ALIVE.borrow_mut().contains(who)
+    }
 }
 
 pub struct TestResolveHint;
 impl ResolveHint<u64, u64> for TestResolveHint {
-	fn resolve_hint(who: &u64) -> Option<u64> {
-		if *who < 256 {
-			None
-		} else {
-			Some(*who - 256)
-		}
-	}
+    fn resolve_hint(who: &u64) -> Option<u64> {
+        if *who < 256 {
+            None
+        } else {
+            Some(*who - 256)
+        }
+    }
 }
 
 // Workaround for https://github.com/rust-lang/rust/issues/26925 . Remove when sorted.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Runtime;
 parameter_types! {
-	pub const BlockHashCount: u64 = 250;
-	pub const MaximumBlockWeight: u32 = 1024;
-	pub const MaximumBlockLength: u32 = 2 * 1024;
-	pub const AvailableBlockRatio: Perbill = Perbill::one();
+    pub const BlockHashCount: u64 = 250;
+    pub const MaximumBlockWeight: u32 = 1024;
+    pub const MaximumBlockLength: u32 = 2 * 1024;
+    pub const AvailableBlockRatio: Perbill = Perbill::one();
 }
 impl system::Trait for Runtime {
-	type Origin = Origin;
-	type Index = u64;
-	type BlockNumber = u64;
-	type Call = ();
-	type Hash = H256;
-	type Hashing = ::sr_primitives::traits::BlakeTwo256;
-	type AccountId = u64;
-	type Lookup = Indices;
-	type Header = Header;
-	type Event = ();
-	type BlockHashCount = BlockHashCount;
-	type MaximumBlockWeight = MaximumBlockWeight;
-	type MaximumBlockLength = MaximumBlockLength;
-	type AvailableBlockRatio = AvailableBlockRatio;
-	type Version = ();
+    type Origin = Origin;
+    type Index = u64;
+    type BlockNumber = u64;
+    type Call = ();
+    type Hash = H256;
+    type Hashing = ::sr_primitives::traits::BlakeTwo256;
+    type AccountId = u64;
+    type Lookup = Indices;
+    type Header = Header;
+    type Event = ();
+    type BlockHashCount = BlockHashCount;
+    type MaximumBlockWeight = MaximumBlockWeight;
+    type MaximumBlockLength = MaximumBlockLength;
+    type AvailableBlockRatio = AvailableBlockRatio;
+    type Version = ();
 }
 impl Trait for Runtime {
-	type AccountIndex = u64;
-	type IsDeadAccount = TestIsDeadAccount;
-	type ResolveHint = TestResolveHint;
-	type Event = ();
+    type AccountIndex = u64;
+    type IsDeadAccount = TestIsDeadAccount;
+    type ResolveHint = TestResolveHint;
+    type Event = ();
 }
 
 pub fn new_test_ext() -> runtime_io::TestExternalities {
-	{
-		let mut h = ALIVE.borrow_mut();
-		h.clear();
-		for i in 1..5 { h.insert(i); }
-	}
+    {
+        let mut h = ALIVE.borrow_mut();
+        h.clear();
+        for i in 1..5 {
+            h.insert(i);
+        }
+    }
 
-	let mut t = system::GenesisConfig::default().build_storage::<Runtime>().unwrap();
-	GenesisConfig::<Runtime> {
-		ids: vec![1, 2, 3, 4]
-	}.assimilate_storage(&mut t).unwrap();
-	t.into()
+    let mut t = system::GenesisConfig::default()
+        .build_storage::<Runtime>()
+        .unwrap();
+    GenesisConfig::<Runtime> {
+        ids: vec![1, 2, 3, 4],
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+    t.into()
 }
 
 pub type Indices = Module<Runtime>;

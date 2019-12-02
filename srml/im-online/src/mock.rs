@@ -21,50 +21,50 @@
 use std::cell::RefCell;
 
 use crate::{Module, Trait};
-use sr_primitives::Perbill;
-use sr_staking_primitives::{SessionIndex, offence::ReportOffence};
-use sr_primitives::testing::{Header, UintAuthorityId, TestXt};
-use sr_primitives::traits::{IdentityLookup, BlakeTwo256, ConvertInto};
 use primitives::H256;
-use support::{impl_outer_origin, impl_outer_dispatch, parameter_types};
+use sr_primitives::testing::{Header, TestXt, UintAuthorityId};
+use sr_primitives::traits::{BlakeTwo256, ConvertInto, IdentityLookup};
+use sr_primitives::Perbill;
+use sr_staking_primitives::{offence::ReportOffence, SessionIndex};
+use support::{impl_outer_dispatch, impl_outer_origin, parameter_types};
 use {runtime_io, system};
 
-impl_outer_origin!{
-	pub enum Origin for Runtime {}
+impl_outer_origin! {
+    pub enum Origin for Runtime {}
 }
 
 impl_outer_dispatch! {
-	pub enum Call for Runtime where origin: Origin {
-		imonline::ImOnline,
-	}
+    pub enum Call for Runtime where origin: Origin {
+        imonline::ImOnline,
+    }
 }
 
 thread_local! {
-	pub static VALIDATORS: RefCell<Option<Vec<u64>>> = RefCell::new(Some(vec![1, 2, 3]));
+    pub static VALIDATORS: RefCell<Option<Vec<u64>>> = RefCell::new(Some(vec![1, 2, 3]));
 }
 
 pub struct TestOnSessionEnding;
 impl session::OnSessionEnding<u64> for TestOnSessionEnding {
-	fn on_session_ending(_ending_index: SessionIndex, _will_apply_at: SessionIndex)
-		-> Option<Vec<u64>>
-	{
-		VALIDATORS.with(|l| l.borrow_mut().take())
-	}
+    fn on_session_ending(
+        _ending_index: SessionIndex,
+        _will_apply_at: SessionIndex,
+    ) -> Option<Vec<u64>> {
+        VALIDATORS.with(|l| l.borrow_mut().take())
+    }
 }
 
 impl session::historical::OnSessionEnding<u64, u64> for TestOnSessionEnding {
-	fn on_session_ending(_ending_index: SessionIndex, _will_apply_at: SessionIndex)
-		-> Option<(Vec<u64>, Vec<(u64, u64)>)>
-	{
-		VALIDATORS.with(|l| l
-			.borrow_mut()
-			.take()
-			.map(|validators| {
-				let full_identification = validators.iter().map(|v| (*v, *v)).collect();
-				(validators, full_identification)
-			})
-		)
-	}
+    fn on_session_ending(
+        _ending_index: SessionIndex,
+        _will_apply_at: SessionIndex,
+    ) -> Option<(Vec<u64>, Vec<(u64, u64)>)> {
+        VALIDATORS.with(|l| {
+            l.borrow_mut().take().map(|validators| {
+                let full_identification = validators.iter().map(|v| (*v, *v)).collect();
+                (validators, full_identification)
+            })
+        })
+    }
 }
 
 /// An extrinsic type used for tests.
@@ -74,95 +74,96 @@ type IdentificationTuple = (u64, u64);
 type Offence = crate::UnresponsivenessOffence<IdentificationTuple>;
 
 thread_local! {
-	pub static OFFENCES: RefCell<Vec<(Vec<u64>, Offence)>> = RefCell::new(vec![]);
+    pub static OFFENCES: RefCell<Vec<(Vec<u64>, Offence)>> = RefCell::new(vec![]);
 }
 
 /// A mock offence report handler.
 pub struct OffenceHandler;
 impl ReportOffence<u64, IdentificationTuple, Offence> for OffenceHandler {
-	fn report_offence(reporters: Vec<u64>, offence: Offence) {
-		OFFENCES.with(|l| l.borrow_mut().push((reporters, offence)));
-	}
+    fn report_offence(reporters: Vec<u64>, offence: Offence) {
+        OFFENCES.with(|l| l.borrow_mut().push((reporters, offence)));
+    }
 }
 
 pub fn new_test_ext() -> runtime_io::TestExternalities {
-	let t = system::GenesisConfig::default().build_storage::<Runtime>().unwrap();
-	t.into()
+    let t = system::GenesisConfig::default()
+        .build_storage::<Runtime>()
+        .unwrap();
+    t.into()
 }
-
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Runtime;
 
 parameter_types! {
-	pub const BlockHashCount: u64 = 250;
-	pub const MaximumBlockWeight: u32 = 1024;
-	pub const MaximumBlockLength: u32 = 2 * 1024;
-	pub const AvailableBlockRatio: Perbill = Perbill::one();
+    pub const BlockHashCount: u64 = 250;
+    pub const MaximumBlockWeight: u32 = 1024;
+    pub const MaximumBlockLength: u32 = 2 * 1024;
+    pub const AvailableBlockRatio: Perbill = Perbill::one();
 }
 
 impl system::Trait for Runtime {
-	type Origin = Origin;
-	type Index = u64;
-	type BlockNumber = u64;
-	type Call = Call;
-	type Hash = H256;
-	type Hashing = BlakeTwo256;
-	type AccountId = u64;
-	type Lookup = IdentityLookup<Self::AccountId>;
-	type Header = Header;
-	type Event = ();
-	type BlockHashCount = BlockHashCount;
-	type MaximumBlockWeight = MaximumBlockWeight;
-	type MaximumBlockLength = MaximumBlockLength;
-	type AvailableBlockRatio = AvailableBlockRatio;
-	type Version = ();
+    type Origin = Origin;
+    type Index = u64;
+    type BlockNumber = u64;
+    type Call = Call;
+    type Hash = H256;
+    type Hashing = BlakeTwo256;
+    type AccountId = u64;
+    type Lookup = IdentityLookup<Self::AccountId>;
+    type Header = Header;
+    type Event = ();
+    type BlockHashCount = BlockHashCount;
+    type MaximumBlockWeight = MaximumBlockWeight;
+    type MaximumBlockLength = MaximumBlockLength;
+    type AvailableBlockRatio = AvailableBlockRatio;
+    type Version = ();
 }
 
 parameter_types! {
-	pub const Period: u64 = 1;
-	pub const Offset: u64 = 0;
+    pub const Period: u64 = 1;
+    pub const Offset: u64 = 0;
 }
 
 parameter_types! {
-	pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(33);
+    pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(33);
 }
 
 impl session::Trait for Runtime {
-	type ShouldEndSession = session::PeriodicSessions<Period, Offset>;
-	type OnSessionEnding = session::historical::NoteHistoricalRoot<Runtime, TestOnSessionEnding>;
-	type SessionHandler = (ImOnline, );
-	type ValidatorId = u64;
-	type ValidatorIdOf = ConvertInto;
-	type Keys = UintAuthorityId;
-	type Event = ();
-	type SelectInitialValidators = ();
-	type DisabledValidatorsThreshold = DisabledValidatorsThreshold;
+    type ShouldEndSession = session::PeriodicSessions<Period, Offset>;
+    type OnSessionEnding = session::historical::NoteHistoricalRoot<Runtime, TestOnSessionEnding>;
+    type SessionHandler = (ImOnline,);
+    type ValidatorId = u64;
+    type ValidatorIdOf = ConvertInto;
+    type Keys = UintAuthorityId;
+    type Event = ();
+    type SelectInitialValidators = ();
+    type DisabledValidatorsThreshold = DisabledValidatorsThreshold;
 }
 
 impl session::historical::Trait for Runtime {
-	type FullIdentification = u64;
-	type FullIdentificationOf = ConvertInto;
+    type FullIdentification = u64;
+    type FullIdentificationOf = ConvertInto;
 }
 
 parameter_types! {
-	pub const UncleGenerations: u32 = 5;
+    pub const UncleGenerations: u32 = 5;
 }
 
 impl authorship::Trait for Runtime {
-	type FindAuthor = ();
-	type UncleGenerations = UncleGenerations;
-	type FilterUncle = ();
-	type EventHandler = ImOnline;
+    type FindAuthor = ();
+    type UncleGenerations = UncleGenerations;
+    type FilterUncle = ();
+    type EventHandler = ImOnline;
 }
 
 impl Trait for Runtime {
-	type AuthorityId = UintAuthorityId;
-	type Event = ();
-	type Call = Call;
-	type SubmitTransaction = SubmitTransaction;
-	type ReportUnresponsiveness = OffenceHandler;
-	type SessionDuration = Period;
+    type AuthorityId = UintAuthorityId;
+    type Event = ();
+    type Call = Call;
+    type SubmitTransaction = SubmitTransaction;
+    type ReportUnresponsiveness = OffenceHandler;
+    type SessionDuration = Period;
 }
 
 /// Im Online module.
@@ -171,8 +172,8 @@ pub type System = system::Module<Runtime>;
 pub type Session = session::Module<Runtime>;
 
 pub fn advance_session() {
-	let now = System::block_number();
-	System::set_block_number(now + 1);
-	Session::rotate_session();
-	assert_eq!(Session::current_index(), (now / Period::get()) as u32);
+    let now = System::block_number();
+    System::set_block_number(now + 1);
+    Session::rotate_session();
+    assert_eq!(Session::current_index(), (now / Period::get()) as u32);
 }

@@ -16,18 +16,18 @@
 
 //! Environment definition of the wasm smart-contract runtime.
 
-use crate::{Schedule, Trait, CodeHash, ComputeDispatchFee, BalanceOf};
 use crate::exec::{
-	Ext, ExecResult, ExecError, ExecReturnValue, StorageKey, TopicOf, STATUS_SUCCESS,
+    ExecError, ExecResult, ExecReturnValue, Ext, StorageKey, TopicOf, STATUS_SUCCESS,
 };
-use crate::gas::{Gas, GasMeter, Token, GasMeterResult, approx_gas_for_balance};
-use sandbox;
-use system;
-use rstd::prelude::*;
+use crate::gas::{approx_gas_for_balance, Gas, GasMeter, GasMeterResult, Token};
+use crate::{BalanceOf, CodeHash, ComputeDispatchFee, Schedule, Trait};
+use codec::{Decode, Encode};
 use rstd::convert::TryInto;
 use rstd::mem;
-use codec::{Decode, Encode};
+use rstd::prelude::*;
+use sandbox;
 use sr_primitives::traits::{Bounded, SaturatedConversion};
+use system;
 
 /// The value returned from ext_call and ext_instantiate contract external functions if the call or
 /// instantiation traps. This value is chosen as if the execution does not trap, the return value
@@ -39,154 +39,169 @@ const TRAP_RETURN_CODE: u32 = 0x0100;
 /// In this runtime traps used not only for signaling about errors but also
 /// to just terminate quickly in some cases.
 enum SpecialTrap {
-	/// Signals that trap was generated in response to call `ext_return` host function.
-	Return(Vec<u8>),
+    /// Signals that trap was generated in response to call `ext_return` host function.
+    Return(Vec<u8>),
 }
 
 /// Can only be used for one call.
 pub(crate) struct Runtime<'a, E: Ext + 'a> {
-	ext: &'a mut E,
-	scratch_buf: Vec<u8>,
-	schedule: &'a Schedule,
-	memory: sandbox::Memory,
-	gas_meter: &'a mut GasMeter<E::T>,
-	special_trap: Option<SpecialTrap>,
+    ext: &'a mut E,
+    scratch_buf: Vec<u8>,
+    schedule: &'a Schedule,
+    memory: sandbox::Memory,
+    gas_meter: &'a mut GasMeter<E::T>,
+    special_trap: Option<SpecialTrap>,
 }
 impl<'a, E: Ext + 'a> Runtime<'a, E> {
-	pub(crate) fn new(
-		ext: &'a mut E,
-		input_data: Vec<u8>,
-		schedule: &'a Schedule,
-		memory: sandbox::Memory,
-		gas_meter: &'a mut GasMeter<E::T>,
-	) -> Self {
-		Runtime {
-			ext,
-			// Put the input data into the scratch buffer immediately.
-			scratch_buf: input_data,
-			schedule,
-			memory,
-			gas_meter,
-			special_trap: None,
-		}
-	}
+    pub(crate) fn new(
+        ext: &'a mut E,
+        input_data: Vec<u8>,
+        schedule: &'a Schedule,
+        memory: sandbox::Memory,
+        gas_meter: &'a mut GasMeter<E::T>,
+    ) -> Self {
+        Runtime {
+            ext,
+            // Put the input data into the scratch buffer immediately.
+            scratch_buf: input_data,
+            schedule,
+            memory,
+            gas_meter,
+            special_trap: None,
+        }
+    }
 }
 
 pub(crate) fn to_execution_result<E: Ext>(
-	runtime: Runtime<E>,
-	sandbox_result: Result<sandbox::ReturnValue, sandbox::Error>,
+    runtime: Runtime<E>,
+    sandbox_result: Result<sandbox::ReturnValue, sandbox::Error>,
 ) -> ExecResult {
-	// Special case. The trap was the result of the execution `return` host function.
-	if let Some(SpecialTrap::Return(data)) = runtime.special_trap {
-		return Ok(ExecReturnValue { status: STATUS_SUCCESS, data });
-	}
+    // Special case. The trap was the result of the execution `return` host function.
+    if let Some(SpecialTrap::Return(data)) = runtime.special_trap {
+        return Ok(ExecReturnValue {
+            status: STATUS_SUCCESS,
+            data,
+        });
+    }
 
-	// Check the exact type of the error.
-	match sandbox_result {
-		// No traps were generated. Proceed normally.
-		Ok(sandbox::ReturnValue::Unit) => {
-			let mut buffer = runtime.scratch_buf;
-			buffer.clear();
-			Ok(ExecReturnValue { status: STATUS_SUCCESS, data: buffer })
-		}
-		Ok(sandbox::ReturnValue::Value(sandbox::TypedValue::I32(exit_code))) => {
-			let status = (exit_code & 0xFF).try_into()
-				.expect("exit_code is masked into the range of a u8; qed");
-			Ok(ExecReturnValue { status, data: runtime.scratch_buf })
-		}
-		// This should never happen as the return type of exported functions should have been
-		// validated by the code preparation process. However, because panics are really
-		// undesirable in the runtime code, we treat this as a trap for now. Eventually, we might
-		// want to revisit this.
-		Ok(_) => Err(ExecError { reason: "return type error", buffer: runtime.scratch_buf }),
-		// `Error::Module` is returned only if instantiation or linking failed (i.e.
-		// wasm binary tried to import a function that is not provided by the host).
-		// This shouldn't happen because validation process ought to reject such binaries.
-		//
-		// Because panics are really undesirable in the runtime code, we treat this as
-		// a trap for now. Eventually, we might want to revisit this.
-		Err(sandbox::Error::Module) =>
-			Err(ExecError { reason: "validation error", buffer: runtime.scratch_buf }),
-		// Any other kind of a trap should result in a failure.
-		Err(sandbox::Error::Execution) | Err(sandbox::Error::OutOfBounds) =>
-			Err(ExecError { reason: "during execution", buffer: runtime.scratch_buf }),
-	}
+    // Check the exact type of the error.
+    match sandbox_result {
+        // No traps were generated. Proceed normally.
+        Ok(sandbox::ReturnValue::Unit) => {
+            let mut buffer = runtime.scratch_buf;
+            buffer.clear();
+            Ok(ExecReturnValue {
+                status: STATUS_SUCCESS,
+                data: buffer,
+            })
+        }
+        Ok(sandbox::ReturnValue::Value(sandbox::TypedValue::I32(exit_code))) => {
+            let status = (exit_code & 0xFF)
+                .try_into()
+                .expect("exit_code is masked into the range of a u8; qed");
+            Ok(ExecReturnValue {
+                status,
+                data: runtime.scratch_buf,
+            })
+        }
+        // This should never happen as the return type of exported functions should have been
+        // validated by the code preparation process. However, because panics are really
+        // undesirable in the runtime code, we treat this as a trap for now. Eventually, we might
+        // want to revisit this.
+        Ok(_) => Err(ExecError {
+            reason: "return type error",
+            buffer: runtime.scratch_buf,
+        }),
+        // `Error::Module` is returned only if instantiation or linking failed (i.e.
+        // wasm binary tried to import a function that is not provided by the host).
+        // This shouldn't happen because validation process ought to reject such binaries.
+        //
+        // Because panics are really undesirable in the runtime code, we treat this as
+        // a trap for now. Eventually, we might want to revisit this.
+        Err(sandbox::Error::Module) => Err(ExecError {
+            reason: "validation error",
+            buffer: runtime.scratch_buf,
+        }),
+        // Any other kind of a trap should result in a failure.
+        Err(sandbox::Error::Execution) | Err(sandbox::Error::OutOfBounds) => Err(ExecError {
+            reason: "during execution",
+            buffer: runtime.scratch_buf,
+        }),
+    }
 }
 
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 #[derive(Copy, Clone)]
 pub enum RuntimeToken {
-	/// Explicit call to the `gas` function. Charge the gas meter
-	/// with the value provided.
-	Explicit(u32),
-	/// The given number of bytes is read from the sandbox memory.
-	ReadMemory(u32),
-	/// The given number of bytes is written to the sandbox memory.
-	WriteMemory(u32),
-	/// The given number of bytes is read from the sandbox memory and
-	/// is returned as the return data buffer of the call.
-	ReturnData(u32),
-	/// Dispatch fee calculated by `T::ComputeDispatchFee`.
-	ComputedDispatchFee(Gas),
-	/// (topic_count, data_bytes): A buffer of the given size is posted as an event indexed with the
-	/// given number of topics.
-	DepositEvent(u32, u32),
+    /// Explicit call to the `gas` function. Charge the gas meter
+    /// with the value provided.
+    Explicit(u32),
+    /// The given number of bytes is read from the sandbox memory.
+    ReadMemory(u32),
+    /// The given number of bytes is written to the sandbox memory.
+    WriteMemory(u32),
+    /// The given number of bytes is read from the sandbox memory and
+    /// is returned as the return data buffer of the call.
+    ReturnData(u32),
+    /// Dispatch fee calculated by `T::ComputeDispatchFee`.
+    ComputedDispatchFee(Gas),
+    /// (topic_count, data_bytes): A buffer of the given size is posted as an event indexed with the
+    /// given number of topics.
+    DepositEvent(u32, u32),
 }
 
 impl<T: Trait> Token<T> for RuntimeToken {
-	type Metadata = Schedule;
+    type Metadata = Schedule;
 
-	fn calculate_amount(&self, metadata: &Schedule) -> Gas {
-		use self::RuntimeToken::*;
-		let value = match *self {
-			Explicit(amount) => Some(amount.into()),
-			ReadMemory(byte_count) => metadata
-				.sandbox_data_read_cost
-				.checked_mul(byte_count.into()),
-			WriteMemory(byte_count) => metadata
-				.sandbox_data_write_cost
-				.checked_mul(byte_count.into()),
-			ReturnData(byte_count) => metadata
-				.return_data_per_byte_cost
-				.checked_mul(byte_count.into()),
-			DepositEvent(topic_count, data_byte_count) => {
-				let data_cost = metadata
-					.event_data_per_byte_cost
-					.checked_mul(data_byte_count.into());
+    fn calculate_amount(&self, metadata: &Schedule) -> Gas {
+        use self::RuntimeToken::*;
+        let value = match *self {
+            Explicit(amount) => Some(amount.into()),
+            ReadMemory(byte_count) => metadata
+                .sandbox_data_read_cost
+                .checked_mul(byte_count.into()),
+            WriteMemory(byte_count) => metadata
+                .sandbox_data_write_cost
+                .checked_mul(byte_count.into()),
+            ReturnData(byte_count) => metadata
+                .return_data_per_byte_cost
+                .checked_mul(byte_count.into()),
+            DepositEvent(topic_count, data_byte_count) => {
+                let data_cost = metadata
+                    .event_data_per_byte_cost
+                    .checked_mul(data_byte_count.into());
 
-				let topics_cost = metadata
-					.event_per_topic_cost
-					.checked_mul(topic_count.into());
+                let topics_cost = metadata
+                    .event_per_topic_cost
+                    .checked_mul(topic_count.into());
 
-				data_cost
-					.and_then(|data_cost| {
-						topics_cost.and_then(|topics_cost| {
-							data_cost.checked_add(topics_cost)
-						})
-					})
-					.and_then(|data_and_topics_cost|
-						data_and_topics_cost.checked_add(metadata.event_base_cost)
-					)
-			},
-			ComputedDispatchFee(gas) => Some(gas),
-		};
+                data_cost
+                    .and_then(|data_cost| {
+                        topics_cost.and_then(|topics_cost| data_cost.checked_add(topics_cost))
+                    })
+                    .and_then(|data_and_topics_cost| {
+                        data_and_topics_cost.checked_add(metadata.event_base_cost)
+                    })
+            }
+            ComputedDispatchFee(gas) => Some(gas),
+        };
 
-		value.unwrap_or_else(|| Bounded::max_value())
-	}
+        value.unwrap_or_else(|| Bounded::max_value())
+    }
 }
 
 /// Charge the gas meter with the specified token.
 ///
 /// Returns `Err(HostError)` if there is not enough gas.
 fn charge_gas<T: Trait, Tok: Token<T>>(
-	gas_meter: &mut GasMeter<T>,
-	metadata: &Tok::Metadata,
-	token: Tok,
+    gas_meter: &mut GasMeter<T>,
+    metadata: &Tok::Metadata,
+    token: Tok,
 ) -> Result<(), sandbox::HostError> {
-	match gas_meter.charge(metadata, token) {
-		GasMeterResult::Proceed => Ok(()),
-		GasMeterResult::OutOfGas => Err(sandbox::HostError),
-	}
+    match gas_meter.charge(metadata, token) {
+        GasMeterResult::Proceed => Ok(()),
+        GasMeterResult::OutOfGas => Err(sandbox::HostError),
+    }
 }
 
 /// Read designated chunk from the sandbox memory, consuming an appropriate amount of
@@ -198,15 +213,17 @@ fn charge_gas<T: Trait, Tok: Token<T>>(
 /// - out of gas
 /// - requested buffer is not within the bounds of the sandbox memory.
 fn read_sandbox_memory<E: Ext>(
-	ctx: &mut Runtime<E>,
-	ptr: u32,
-	len: u32,
+    ctx: &mut Runtime<E>,
+    ptr: u32,
+    len: u32,
 ) -> Result<Vec<u8>, sandbox::HostError> {
-	charge_gas(ctx.gas_meter, ctx.schedule, RuntimeToken::ReadMemory(len))?;
+    charge_gas(ctx.gas_meter, ctx.schedule, RuntimeToken::ReadMemory(len))?;
 
-	let mut buf = vec![0u8; len as usize];
-	ctx.memory.get(ptr, buf.as_mut_slice()).map_err(|_| sandbox::HostError)?;
-	Ok(buf)
+    let mut buf = vec![0u8; len as usize];
+    ctx.memory
+        .get(ptr, buf.as_mut_slice())
+        .map_err(|_| sandbox::HostError)?;
+    Ok(buf)
 }
 
 /// Read designated chunk from the sandbox memory into the scratch buffer, consuming an
@@ -218,15 +235,17 @@ fn read_sandbox_memory<E: Ext>(
 /// - out of gas
 /// - requested buffer is not within the bounds of the sandbox memory.
 fn read_sandbox_memory_into_scratch<E: Ext>(
-	ctx: &mut Runtime<E>,
-	ptr: u32,
-	len: u32,
+    ctx: &mut Runtime<E>,
+    ptr: u32,
+    len: u32,
 ) -> Result<(), sandbox::HostError> {
-	charge_gas(ctx.gas_meter, ctx.schedule, RuntimeToken::ReadMemory(len))?;
+    charge_gas(ctx.gas_meter, ctx.schedule, RuntimeToken::ReadMemory(len))?;
 
-	ctx.scratch_buf.resize(len as usize, 0);
-	ctx.memory.get(ptr, ctx.scratch_buf.as_mut_slice()).map_err(|_| sandbox::HostError)?;
-	Ok(())
+    ctx.scratch_buf.resize(len as usize, 0);
+    ctx.memory
+        .get(ptr, ctx.scratch_buf.as_mut_slice())
+        .map_err(|_| sandbox::HostError)?;
+    Ok(())
 }
 
 /// Read designated chunk from the sandbox memory into the supplied buffer, consuming
@@ -238,13 +257,17 @@ fn read_sandbox_memory_into_scratch<E: Ext>(
 /// - out of gas
 /// - requested buffer is not within the bounds of the sandbox memory.
 fn read_sandbox_memory_into_buf<E: Ext>(
-	ctx: &mut Runtime<E>,
-	ptr: u32,
-	buf: &mut [u8],
+    ctx: &mut Runtime<E>,
+    ptr: u32,
+    buf: &mut [u8],
 ) -> Result<(), sandbox::HostError> {
-	charge_gas(ctx.gas_meter, ctx.schedule, RuntimeToken::ReadMemory(buf.len() as u32))?;
+    charge_gas(
+        ctx.gas_meter,
+        ctx.schedule,
+        RuntimeToken::ReadMemory(buf.len() as u32),
+    )?;
 
-	ctx.memory.get(ptr, buf).map_err(Into::into)
+    ctx.memory.get(ptr, buf).map_err(Into::into)
 }
 
 /// Read designated chunk from the sandbox memory, consuming an appropriate amount of
@@ -257,12 +280,12 @@ fn read_sandbox_memory_into_buf<E: Ext>(
 /// - requested buffer is not within the bounds of the sandbox memory.
 /// - the buffer contents cannot be decoded as the required type.
 fn read_sandbox_memory_as<E: Ext, D: Decode>(
-	ctx: &mut Runtime<E>,
-	ptr: u32,
-	len: u32,
+    ctx: &mut Runtime<E>,
+    ptr: u32,
+    len: u32,
 ) -> Result<D, sandbox::HostError> {
-	let buf = read_sandbox_memory(ctx, ptr, len)?;
-	D::decode(&mut &buf[..]).map_err(|_| sandbox::HostError)
+    let buf = read_sandbox_memory(ctx, ptr, len)?;
+    D::decode(&mut &buf[..]).map_err(|_| sandbox::HostError)
 }
 
 /// Write the given buffer to the designated location in the sandbox memory, consuming
@@ -274,17 +297,21 @@ fn read_sandbox_memory_as<E: Ext, D: Decode>(
 /// - out of gas
 /// - designated area is not within the bounds of the sandbox memory.
 fn write_sandbox_memory<T: Trait>(
-	schedule: &Schedule,
-	gas_meter: &mut GasMeter<T>,
-	memory: &sandbox::Memory,
-	ptr: u32,
-	buf: &[u8],
+    schedule: &Schedule,
+    gas_meter: &mut GasMeter<T>,
+    memory: &sandbox::Memory,
+    ptr: u32,
+    buf: &[u8],
 ) -> Result<(), sandbox::HostError> {
-	charge_gas(gas_meter, schedule, RuntimeToken::WriteMemory(buf.len() as u32))?;
+    charge_gas(
+        gas_meter,
+        schedule,
+        RuntimeToken::WriteMemory(buf.len() as u32),
+    )?;
 
-	memory.set(ptr, buf)?;
+    memory.set(ptr, buf)?;
 
-	Ok(())
+    Ok(())
 }
 
 // ***********************************************************
@@ -842,15 +869,11 @@ define_env!(Env, <E: Ext>,
 /// This function has complexity of O(n log n) and no additional memory is required, although
 /// the order of items is not preserved.
 fn has_duplicates<T: PartialEq + AsRef<[u8]>>(items: &mut Vec<T>) -> bool {
-	// Sort the vector
-	items.sort_unstable_by(|a, b| {
-		Ord::cmp(a.as_ref(), b.as_ref())
-	});
-	// And then find any two consecutive equal elements.
-	items.windows(2).any(|w| {
-		match w {
-			&[ref a, ref b] => a == b,
-			_ => false,
-		}
-	})
+    // Sort the vector
+    items.sort_unstable_by(|a, b| Ord::cmp(a.as_ref(), b.as_ref()));
+    // And then find any two consecutive equal elements.
+    items.windows(2).any(|w| match w {
+        &[ref a, ref b] => a == b,
+        _ => false,
+    })
 }

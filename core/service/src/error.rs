@@ -17,9 +17,9 @@
 //! Errors that can occur during the service operation.
 
 use client;
-use network;
-use keystore;
 use consensus_common;
+use keystore;
+use network;
 
 /// Service Result typedef.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -27,38 +27,38 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Service errors.
 #[derive(Debug, derive_more::Display, derive_more::From)]
 pub enum Error {
-	/// Client error.
-	Client(client::error::Error),
-	/// IO error.
-	Io(std::io::Error),
-	/// Consensus error.
-	Consensus(consensus_common::Error),
-	/// Network error.
-	Network(network::error::Error),
-	/// Keystore error.
-	Keystore(keystore::Error),
-	/// Best chain selection strategy is missing.
-	#[display(fmt="Best chain selection strategy (SelectChain) is not provided.")]
-	SelectChainRequired,
-	/// Other error.
-	Other(String),
+    /// Client error.
+    Client(client::error::Error),
+    /// IO error.
+    Io(std::io::Error),
+    /// Consensus error.
+    Consensus(consensus_common::Error),
+    /// Network error.
+    Network(network::error::Error),
+    /// Keystore error.
+    Keystore(keystore::Error),
+    /// Best chain selection strategy is missing.
+    #[display(fmt = "Best chain selection strategy (SelectChain) is not provided.")]
+    SelectChainRequired,
+    /// Other error.
+    Other(String),
 }
 
 impl<'a> From<&'a str> for Error {
-	fn from(s: &'a str) -> Self {
-		Error::Other(s.into())
-	}
+    fn from(s: &'a str) -> Self {
+        Error::Other(s.into())
+    }
 }
 
 impl std::error::Error for Error {
-	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-		match self {
-			Error::Client(ref err) => Some(err),
-			Error::Io(ref err) => Some(err),
-			Error::Consensus(ref err) => Some(err),
-			Error::Network(ref err) => Some(err),
-			Error::Keystore(ref err) => Some(err),
-			_ => None,
-		}
-	}
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Client(ref err) => Some(err),
+            Error::Io(ref err) => Some(err),
+            Error::Consensus(ref err) => Some(err),
+            Error::Network(ref err) => Some(err),
+            Error::Keystore(ref err) => Some(err),
+            _ => None,
+        }
+    }
 }
